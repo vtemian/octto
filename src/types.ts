@@ -205,50 +205,6 @@ export interface ReviewSectionConfig extends BaseConfig {
   context?: string;
 }
 
-export interface WizardStep {
-  /** Step identifier */
-  id: string;
-  /** Step type */
-  type: "pick_one" | "pick_many" | "text" | "confirm";
-  /** Step configuration (matches the type's config) */
-  config: PickOneConfig | PickManyConfig | AskTextConfig | ConfirmConfig;
-}
-
-export interface WizardConfig extends BaseConfig {
-  /** Wizard title */
-  title: string;
-  /** Wizard steps */
-  steps: WizardStep[];
-  /** Allow going back to previous steps */
-  allowBack?: boolean;
-}
-
-export interface InterviewQuestion {
-  /** Question identifier */
-  id: string;
-  /** Question type */
-  type: "single" | "multi" | "text" | "image";
-  /** Question text */
-  question: string;
-  /** Options for single/multi */
-  options?: string[];
-  /** Recommended answers */
-  recommended?: string | string[];
-  /** Additional context */
-  context?: string;
-  /** Is this question required */
-  required?: boolean;
-}
-
-export interface InterviewConfig extends BaseConfig {
-  /** Interview title */
-  title?: string;
-  /** Interview description */
-  description?: string;
-  /** Questions to ask */
-  questions: InterviewQuestion[];
-}
-
 export interface ThumbsConfig extends BaseConfig {
   /** Question/prompt to display */
   question: string;
@@ -401,22 +357,6 @@ export interface ReviewSectionResponse extends BaseResponse {
   decision?: "approve" | "revise";
   /** Inline feedback/suggestions */
   feedback?: string;
-}
-
-export interface WizardResponse extends BaseResponse {
-  /** Responses by step id */
-  responses: Record<string, unknown>;
-  /** Last completed step id */
-  lastStep?: string;
-}
-
-export interface InterviewResponse extends BaseResponse {
-  /** Responses by question id */
-  responses: Array<{
-    id: string;
-    value: string | string[];
-    attachments?: string[];
-  }>;
 }
 
 export interface ThumbsResponse extends BaseResponse {

@@ -64,13 +64,22 @@ export interface Session {
   wsClient?: ServerWebSocket<unknown>;
 }
 
+export interface InitialQuestion {
+  type: QuestionType;
+  config: QuestionConfig;
+}
+
 export interface StartSessionInput {
   title?: string;
+  /** Initial questions to display immediately when browser opens */
+  questions?: InitialQuestion[];
 }
 
 export interface StartSessionOutput {
   session_id: string;
   url: string;
+  /** IDs of initial questions if any were provided */
+  question_ids?: string[];
 }
 
 export interface EndSessionOutput {

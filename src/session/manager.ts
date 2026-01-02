@@ -67,6 +67,25 @@ export class SessionManager {
 
     this.sessions.set(sessionId, session);
 
+    // Add initial questions if provided (before opening browser)
+    const questionIds: string[] = [];
+    if (input.questions && input.questions.length > 0) {
+      for (const q of input.questions) {
+        const questionId = generateId("q");
+        const question: Question = {
+          id: questionId,
+          sessionId,
+          type: q.type,
+          config: q.config,
+          status: "pending",
+          createdAt: new Date(),
+        };
+        session.questions.set(questionId, question);
+        this.questionToSession.set(questionId, sessionId);
+        questionIds.push(questionId);
+      }
+    }
+
     // Open browser (unless skipped for tests)
     if (!this.options.skipBrowser) {
       await openBrowser(url);
@@ -75,6 +94,7 @@ export class SessionManager {
     return {
       session_id: sessionId,
       url,
+      question_ids: questionIds.length > 0 ? questionIds : undefined,
     };
   }
 

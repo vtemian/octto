@@ -1,27 +1,62 @@
 // src/tools/session.ts
 import { tool } from "@opencode-ai/plugin/tool";
 import type { SessionManager } from "../session/manager";
+import type { QuestionType, QuestionConfig } from "../session/types";
 
 export function createSessionTools(manager: SessionManager) {
   const start_session = tool({
-    description: `Start an interactive brainstormer session.
-Opens a browser window for the user to answer questions.
-Returns session_id and URL. Use question tools to push questions.`,
+    description: `Start an interactive brainstormer session with initial questions.
+Opens a browser window with questions already displayed - no waiting.
+ALWAYS provide your prepared questions here for instant display.`,
     args: {
       title: tool.schema.string().optional().describe("Session title (shown in browser)"),
+      questions: tool.schema
+        .array(
+          tool.schema.object({
+            type: tool.schema
+              .enum([
+                "pick_one",
+                "pick_many",
+                "confirm",
+                "ask_text",
+                "show_options",
+                "review_section",
+                "thumbs",
+                "slider",
+              ])
+              .describe("Question type"),
+            config: tool.schema.object({}).passthrough().describe("Question config (varies by type)"),
+          }),
+        )
+        .optional()
+        .describe("Initial questions to display immediately when browser opens"),
     },
     execute: async (args) => {
       try {
-        const result = await manager.startSession({ title: args.title });
-        return `## Session Started
+        const questions = args.questions?.map((q) => ({
+          type: q.type as QuestionType,
+          config: q.config as unknown as QuestionConfig,
+        }));
+        const result = await manager.startSession({ title: args.title, questions });
+
+        let output = `## Session Started
 
 | Field | Value |
 |-------|-------|
 | Session ID | ${result.session_id} |
 | URL | ${result.url} |
+`;
 
-Browser opened. Use question tools (pick_one, confirm, etc.) to push questions.
-Use get_answer to retrieve responses.`;
+        if (result.question_ids && result.question_ids.length > 0) {
+          output += `| Questions | ${result.question_ids.length} loaded |\n\n`;
+          output += `**Question IDs:** ${result.question_ids.join(", ")}\n\n`;
+          output += `Browser opened with ${result.question_ids.length} questions ready.\n`;
+          output += `Use get_next_answer(session_id, block=true) to get answers as user responds.`;
+        } else {
+          output += `\nBrowser opened. Use question tools to push questions.`;
+        }
+
+        return output;
       } catch (error) {
         return `Failed to start session: ${error instanceof Error ? error.message : String(error)}`;
       }

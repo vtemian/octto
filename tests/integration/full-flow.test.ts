@@ -108,10 +108,15 @@ describe("Full Flow Integration", () => {
     expect(r1.question_id).toBe(q3.question_id);
     expect(r1.response).toEqual({ choice: "yes" });
 
+    // Calling get_next_answer again without new answers should return pending (q3 already retrieved)
+    const r1b = await manager.getNextAnswer({ session_id, block: false });
+    expect(r1b.completed).toBe(false);
+    expect(r1b.status).toBe("pending");
+
     // Answer q1
     manager.handleWsMessage(session_id, { type: "response", id: q1.question_id, answer: { choice: "no" } });
 
-    // get_next_answer should return q1
+    // get_next_answer should return q1 (not q3 again)
     const r2 = await manager.getNextAnswer({ session_id, block: false });
     expect(r2.completed).toBe(true);
     expect(r2.question_id).toBe(q1.question_id);

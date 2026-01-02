@@ -249,11 +249,11 @@ export class SessionManager {
       };
     }
 
-    // Check if any question is already answered but not yet retrieved
+    // Check if any question is answered but not yet retrieved
     for (const question of session.questions.values()) {
-      if (question.status === "answered") {
-        // Mark as retrieved by changing status? Or just return it.
-        // For now, we return it - caller should track which they've seen
+      if (question.status === "answered" && !question.retrieved) {
+        // Mark as retrieved so we don't return it again
+        question.retrieved = true;
         return {
           completed: true,
           question_id: question.id,
@@ -264,7 +264,7 @@ export class SessionManager {
       }
     }
 
-    // Check if there are any pending questions
+    // Check if there are any pending questions (not answered, not cancelled, not timed out)
     const hasPending = Array.from(session.questions.values()).some((q) => q.status === "pending");
 
     if (!hasPending) {

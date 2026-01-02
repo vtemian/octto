@@ -12,6 +12,8 @@ export interface Question {
   createdAt: Date;
   answeredAt?: Date;
   response?: unknown;
+  /** True if this answer was already returned via get_next_answer */
+  retrieved?: boolean;
 }
 
 export type QuestionType =

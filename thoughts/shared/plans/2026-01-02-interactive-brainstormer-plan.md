@@ -27,7 +27,168 @@ The following components are **already implemented**:
 
 ---
 
-## Task 1: Create Plugin Entry Point
+## Task 0: Review and Fix Existing Implementation
+
+**Priority:** HIGH - Must be done before any new code
+
+The existing implementation has several bugs and issues that need to be fixed before proceeding.
+
+### Issue 0.1: Missing UI Bundle Import (Build Blocker)
+
+**File:** `src/session/server.ts` line 4
+
+**Problem:** Imports `getHtmlBundle` from `../ui/bundle` which doesn't exist. This prevents the project from building.
+
+**Fix:** Create `src/ui/bundle.ts` first (Task 5 moved earlier), OR temporarily stub the import.
+
+### Issue 0.2: Cancel Question Notifies Waiters Incorrectly
+
+**File:** `src/session/manager.ts` lines 247-250
+
+**Problem:** When cancelling a question, the code notifies waiters with `undefined`:
+```typescript
+const waiters = this.responseWaiters.get(questionId) || [];
+for (const waiter of waiters) {
+  waiter(undefined);  // BUG: This causes get_answer to return completed: true
+}
+```
+
+The waiter callback (line 206-212) resolves with `completed: true, status: "answered"` regardless of the value:
+```typescript
+const waiterCallback = (response: unknown) => {
+  clearTimeout(timeoutId);
+  resolve({
+    completed: true,  // Always true!
+    status: "answered",
+    response,
+  });
+};
+```
+
+**Fix:** Change the waiter pattern to handle cancellation:
+
+```typescript
+// In cancelQuestion method (around line 247):
+const waiters = this.responseWaiters.get(questionId) || [];
+for (const waiter of waiters) {
+  waiter({ cancelled: true });  // Signal cancellation
+}
+
+// In getAnswer method, update waiterCallback (around line 206):
+const waiterCallback = (response: unknown) => {
+  clearTimeout(timeoutId);
+  if (response && typeof response === 'object' && 'cancelled' in response) {
+    resolve({
+      completed: false,
+      status: "cancelled",
+      reason: "cancelled",
+    });
+  } else {
+    resolve({
+      completed: true,
+      status: "answered",
+      response,
+    });
+  }
+};
+```
+
+### Issue 0.3: YAGNI Violation - Extra Types Not in Design
+
+**File:** `src/types.ts` lines 208-250
+
+**Problem:** Contains `WizardStep`, `WizardConfig`, `InterviewQuestion`, `InterviewConfig` types that are NOT in the design document's 16 question types. These add complexity without being used.
+
+**Fix:** Remove these types:
+- Delete `WizardStep` interface (lines 208-215)
+- Delete `WizardConfig` interface (lines 217-224)
+- Delete `InterviewQuestion` interface (lines 226-241)
+- Delete `InterviewConfig` interface (lines 243-250)
+- Delete `WizardResponse` interface (lines 406-411)
+- Delete `InterviewResponse` interface (lines 413-420)
+
+### Issue 0.4: Type Import at End of File
+
+**File:** `src/session/types.ts` line 135
+
+**Problem:** The `ServerWebSocket` type is imported at the bottom of the file after it's used on line 61. While TypeScript allows this due to hoisting, it's confusing and non-standard.
+
+**Fix:** Move the import to the top of the file:
+```typescript
+// At top of file, after the first comment
+import type { ServerWebSocket } from "bun";
+```
+
+### Verification Steps for Task 0
+
+After making all fixes:
+
+1. Run `bun run typecheck` - should pass with no errors
+2. Run `bun run build` - will still fail (missing ui/bundle) but should have no type errors
+3. Verify `src/types.ts` no longer contains Wizard/Interview types
+4. Verify `src/session/types.ts` has import at top
+
+---
+
+## Task 1: Create UI Bundle (Moved Up - Build Dependency)
+
+**Files:**
+- Create: `src/ui/bundle.ts`
+
+**Why moved up:** The server.ts file imports from `../ui/bundle`, so this must exist before the project can build.
+
+**Step 1: Create placeholder HTML bundle**
+
+The React UI will be built separately and embedded as a string. For now, create a minimal working placeholder that handles the core question types:
+
+```typescript
+// src/ui/bundle.ts
+
+/**
+ * Returns the bundled HTML for the brainstormer UI.
+ * This is a pre-built React app embedded as a string.
+ * 
+ * The UI connects via WebSocket and renders questions as they arrive.
+ */
+export function getHtmlBundle(): string {
+  // See Task 5 in original plan for full implementation
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Brainstormer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen p-8">
+  <div id="root" class="max-w-2xl mx-auto">
+    <div class="text-center py-12">
+      <h1 class="text-2xl font-bold text-gray-800 mb-4">Brainstormer</h1>
+      <p class="text-gray-600 mb-8">Connecting...</p>
+    </div>
+  </div>
+  <script>
+    // Minimal WebSocket client - full implementation in Task 5
+    const ws = new WebSocket('ws://' + location.host + '/ws');
+    ws.onopen = () => ws.send(JSON.stringify({ type: 'connected' }));
+    ws.onmessage = (e) => console.log('Message:', JSON.parse(e.data));
+  </script>
+</body>
+</html>`;
+}
+```
+
+**Step 2: Verify build now works**
+
+Run: `bun run typecheck`
+Expected: PASS (no type errors)
+
+Run: `bun run build`
+Expected: Build succeeds (creates dist/index.js)
+
+---
+
+## Task 2: Create Plugin Entry Point
 
 **Files:**
 - Create: `src/index.ts`
@@ -72,7 +233,7 @@ Expected: Error about missing `./tools` module (expected, we'll create it next)
 
 ---
 
-## Task 2: Create Tool Definitions - Session Management
+## Task 3: Create Tool Definitions - Session Management
 
 **Files:**
 - Create: `src/tools/index.ts`
@@ -155,7 +316,7 @@ Expected: Errors about missing `./questions` and `./responses` modules
 
 ---
 
-## Task 3: Create Tool Definitions - Question Tools (Part 1: Decision/Choice)
+## Task 4: Create Tool Definitions - Question Tools
 
 **Files:**
 - Create: `src/tools/questions.ts`
@@ -703,7 +864,7 @@ Expected: Error about missing `./responses` module
 
 ---
 
-## Task 4: Create Tool Definitions - Response Tools
+## Task 5: Create Tool Definitions - Response Tools
 
 **Files:**
 - Create: `src/tools/responses.ts`
@@ -798,18 +959,18 @@ The question will be removed from the user's queue.`,
 **Step 2: Verify TypeScript compiles**
 
 Run: `bun run typecheck`
-Expected: Error about missing `../ui/bundle` in server.ts
+Expected: PASS (ui/bundle.ts was created in Task 1)
 
 ---
 
-## Task 5: Create UI Bundle Placeholder
+## Task 6: Expand UI Bundle with Full Question Rendering
 
 **Files:**
-- Create: `src/ui/bundle.ts`
+- Modify: `src/ui/bundle.ts`
 
-**Step 1: Create placeholder HTML bundle**
+**Step 1: Replace minimal placeholder with full implementation**
 
-The React UI will be built separately and embedded as a string. For now, create a minimal placeholder:
+Update the placeholder from Task 1 with the full question rendering logic:
 
 ```typescript
 // src/ui/bundle.ts
@@ -1118,7 +1279,7 @@ Expected: Build succeeds, creates `dist/index.js` and `dist/index.d.ts`
 
 ---
 
-## Task 6: Write Session Manager Tests
+## Task 7: Write Session Manager Tests
 
 **Files:**
 - Create: `tests/session/manager.test.ts`
@@ -1268,7 +1429,7 @@ Expected: All tests PASS
 
 ---
 
-## Task 7: Write Tool Definition Tests
+## Task 8: Write Tool Definition Tests
 
 **Files:**
 - Create: `tests/tools/session.test.ts`
@@ -1330,7 +1491,7 @@ Expected: All tests PASS
 
 ---
 
-## Task 8: Add OpenCode Session Cleanup Hook
+## Task 9: Add OpenCode Session Cleanup Hook
 
 **Files:**
 - Modify: `src/index.ts`
@@ -1422,7 +1583,7 @@ Expected: Build succeeds
 
 ---
 
-## Task 9: Integration Test - Full Flow
+## Task 10: Integration Test - Full Flow
 
 **Files:**
 - Create: `tests/integration/full-flow.test.ts`
@@ -1532,7 +1693,7 @@ Expected: All tests PASS
 
 ---
 
-## Task 10: Final Build and Verification
+## Task 11: Final Build and Verification
 
 **Step 1: Run all tests**
 
@@ -1573,16 +1734,18 @@ git commit -m "feat(brainstormer): complete plugin implementation with tools and
 
 | Task | Description | Files |
 |------|-------------|-------|
-| 1 | Plugin entry point | `src/index.ts` |
-| 2 | Session management tools | `src/tools/index.ts`, `src/tools/session.ts` |
-| 3 | Question tools (16 types) | `src/tools/questions.ts` |
-| 4 | Response tools | `src/tools/responses.ts` |
-| 5 | UI bundle placeholder | `src/ui/bundle.ts` |
-| 6 | Session manager tests | `tests/session/manager.test.ts` |
-| 7 | Tool definition tests | `tests/tools/session.test.ts` |
-| 8 | OpenCode session cleanup | `src/index.ts` (update) |
-| 9 | Integration tests | `tests/integration/full-flow.test.ts` |
-| 10 | Final verification | Build and commit |
+| 0 | **Review and fix existing code** | `src/session/manager.ts`, `src/session/types.ts`, `src/types.ts` |
+| 1 | UI bundle placeholder (build dependency) | `src/ui/bundle.ts` |
+| 2 | Plugin entry point | `src/index.ts` |
+| 3 | Session management tools | `src/tools/index.ts`, `src/tools/session.ts` |
+| 4 | Question tools (16 types) | `src/tools/questions.ts` |
+| 5 | Response tools | `src/tools/responses.ts` |
+| 6 | Full UI bundle implementation | `src/ui/bundle.ts` (expand) |
+| 7 | Session manager tests | `tests/session/manager.test.ts` |
+| 8 | Tool definition tests | `tests/tools/session.test.ts` |
+| 9 | OpenCode session cleanup | `src/index.ts` (update) |
+| 10 | Integration tests | `tests/integration/full-flow.test.ts` |
+| 11 | Final verification | Build and commit |
 
 ## Future Tasks (Not in Scope)
 

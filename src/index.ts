@@ -174,6 +174,14 @@ const BrainstormerPlugin: Plugin = async (ctx) => {
         const brainstormSessions = sessionsByOpenCodeSession.get(openCodeSessionId);
         let effectiveSessionId: string | undefined;
 
+        // DEBUG: Track session lookup
+        const debugInfo = {
+          openCodeSessionId,
+          knownOpenCodeSessions: Array.from(sessionsByOpenCodeSession.keys()),
+          brainstormSessionsForThis: brainstormSessions ? Array.from(brainstormSessions) : [],
+          allContextKeys: Array.from(sessionContexts.keys()),
+        };
+
         if (brainstormSessions && brainstormSessions.size > 0) {
           effectiveSessionId = Array.from(brainstormSessions).pop();
         }
@@ -184,7 +192,7 @@ const BrainstormerPlugin: Plugin = async (ctx) => {
         }
 
         if (!effectiveSessionId || !client) {
-          output.output += `\n\n<PROBE-REQUIRED>Call probe subagent now!</PROBE-REQUIRED>`;
+          output.output += `\n\n<PROBE-REQUIRED>Call probe subagent now!</PROBE-REQUIRED>\n[DEBUG: ${JSON.stringify(debugInfo)}]`;
           return;
         }
 
@@ -197,6 +205,9 @@ const BrainstormerPlugin: Plugin = async (ctx) => {
 
         // Track state for debugging
         const answeredBefore = Array.from(context.questions.values()).filter(q => q.answer !== undefined).length;
+
+        // Add debug to output
+        output.output += `\n[DEBUG: ocsid=${openCodeSessionId?.substring(0,8)}, bsid=${effectiveSessionId}, new=${isNewContext}, answered=${answeredBefore}, contexts=${sessionContexts.size}]`;
 
         const questionIdMatch = output.output.match(/\*\*Question ID:\*\* (q_[a-z0-9]+)/);
         const responseMatch = output.output.match(/\*\*Response:\*\*\s*```json\s*([\s\S]*?)\s*```/);

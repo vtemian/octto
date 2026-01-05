@@ -1,6 +1,6 @@
 // tests/tools/brainstorm/probe.test.ts
 import { describe, it, expect, mock, beforeEach } from "bun:test";
-import { callProbe, buildProbeContext, parseProbeResponse } from "../../../src/tools/brainstorm/probe";
+import { callProbe, buildProbeContext, parseProbeResponse, formatAnswer } from "../../../src/tools/brainstorm/probe";
 import type { BrainstormAnswer, ProbeResponse } from "../../../src/tools/brainstorm/types";
 
 describe("Probe LLM Helper", () => {
@@ -188,6 +188,144 @@ describe("Probe LLM Helper", () => {
 
       expect(capturedArgs.body.model.providerID).toBe("openai");
       expect(capturedArgs.body.model.modelID).toBe("gpt-4");
+    });
+  });
+
+  describe("formatAnswer", () => {
+    it("should format pick_one answer", () => {
+      const result = formatAnswer({
+        question: "Choose one",
+        type: "pick_one",
+        answer: { selected: "option1" },
+      });
+
+      expect(result).toContain('selected "option1"');
+    });
+
+    it("should format pick_one with other", () => {
+      const result = formatAnswer({
+        question: "Choose one",
+        type: "pick_one",
+        answer: { other: "custom value" },
+      });
+
+      expect(result).toContain("other");
+      expect(result).toContain("custom value");
+    });
+
+    it("should format pick_many answer", () => {
+      const result = formatAnswer({
+        question: "Choose many",
+        type: "pick_many",
+        answer: { selected: ["a", "b", "c"] },
+      });
+
+      expect(result).toContain("a");
+      expect(result).toContain("b");
+      expect(result).toContain("c");
+    });
+
+    it("should format confirm answer", () => {
+      const result = formatAnswer({
+        question: "Confirm?",
+        type: "confirm",
+        answer: { choice: "yes" },
+      });
+
+      expect(result).toContain("yes");
+    });
+
+    it("should format ask_text answer", () => {
+      const result = formatAnswer({
+        question: "Enter text",
+        type: "ask_text",
+        answer: { text: "user input here" },
+      });
+
+      expect(result).toContain("user input here");
+    });
+
+    it("should format slider answer", () => {
+      const result = formatAnswer({
+        question: "Rate",
+        type: "slider",
+        answer: { value: 7 },
+      });
+
+      expect(result).toContain("7");
+    });
+
+    it("should format thumbs answer", () => {
+      const result = formatAnswer({
+        question: "Good?",
+        type: "thumbs",
+        answer: { choice: "up" },
+      });
+
+      expect(result).toContain("up");
+    });
+
+    it("should format rank answer", () => {
+      const result = formatAnswer({
+        question: "Rank these",
+        type: "rank",
+        answer: { ranking: ["first", "second", "third"] },
+      });
+
+      expect(result).toContain("first");
+      expect(result).toContain("second");
+    });
+
+    it("should format rate answer", () => {
+      const result = formatAnswer({
+        question: "Rate items",
+        type: "rate",
+        answer: { ratings: { item1: 5, item2: 3 } },
+      });
+
+      expect(result).toContain("item1");
+      expect(result).toContain("5");
+    });
+
+    it("should format show_options answer", () => {
+      const result = formatAnswer({
+        question: "Pick option",
+        type: "show_options",
+        answer: { selected: "optA", feedback: "looks good" },
+      });
+
+      expect(result).toContain("optA");
+      expect(result).toContain("looks good");
+    });
+
+    it("should handle unknown types with JSON fallback", () => {
+      const result = formatAnswer({
+        question: "Unknown",
+        type: "ask_image" as any,
+        answer: { data: "test" },
+      });
+
+      expect(result).toContain("test");
+    });
+
+    it("should handle null response", () => {
+      const result = formatAnswer({
+        question: "Test",
+        type: "confirm",
+        answer: null as any,
+      });
+
+      expect(result).toBe("No response");
+    });
+
+    it("should handle undefined response", () => {
+      const result = formatAnswer({
+        question: "Test",
+        type: "confirm",
+        answer: undefined as any,
+      });
+
+      expect(result).toBe("No response");
     });
   });
 });

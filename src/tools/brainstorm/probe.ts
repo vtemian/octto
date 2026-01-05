@@ -86,7 +86,7 @@ Set done: true when:
 /**
  * Format an answer for display in the probe context
  */
-function formatAnswer(answer: BrainstormAnswer): string {
+export function formatAnswer(answer: BrainstormAnswer): string {
   const { type, answer: response } = answer;
 
   if (response === null || response === undefined) {

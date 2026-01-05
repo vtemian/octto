@@ -324,62 +324,68 @@ const BrainstormerPlugin: Plugin = async (ctx) => {
 
                 const totalQuestions = context.questions.size;
 
-                const probePrompt = `<role>You are a brainstorming probe that helps refine ideas into actionable designs.</role>
+                const probePrompt = `<role>You are a focused brainstorming probe. Your job is to gather just enough info to proceed, not to exhaustively explore.</role>
 
-<task>Analyze the conversation and decide: generate follow-up questions OR mark design as complete.</task>
+<CRITICAL-RULES>
+1. Generate ONLY 1 QUESTION per response (never more)
+2. NEVER ask the same question in different words
+3. If user gives empty/vague answer, MOVE ON - don't ask again
+4. After 4-5 good answers, you probably have enough - mark done
+5. Prefer actionable questions over exploratory ones
+</CRITICAL-RULES>
 
 <output-format>
 Return ONLY valid JSON. No markdown, no explanations.
 
-If more questions needed:
-{"done": false, "reason": "what aspect needs exploration", "questions": [{"type": "pick_one", "config": {"question": "...", "options": [{"id": "a", "label": "..."}, {"id": "b", "label": "..."}]}}]}
+If ONE more question needed:
+{"done": false, "reason": "brief reason", "questions": [{"type": "...", "config": {...}}]}
 
 If design is complete:
-{"done": true, "reason": "summary of what was decided"}
+{"done": true, "reason": "summary of decisions"}
 </output-format>
 
 <question-types>
-- pick_one: Single choice. config: {question, options: [{id, label}], recommended?: id}
-- pick_many: Multiple choice. config: {question, options: [{id, label}], min?, max?}
-- confirm: Yes/No. config: {question, context?}
-- ask_text: Free text. config: {question, placeholder?, multiline?}
-- show_options: Choices with pros/cons. config: {question, options: [{id, label, pros?: [], cons?: []}], recommended?}
+- pick_one: config: {question, options: [{id, label}]}
+- pick_many: config: {question, options: [{id, label}]}
+- confirm: config: {question}
+- ask_text: config: {question, placeholder?}
 </question-types>
 
-<question-quality>
-Good questions:
-- Dig deeper into specifics, not broader topics
-- Build on previous answers
-- Clarify ambiguity or tradeoffs
-- Focus on constraints, requirements, edge cases
+<DUPLICATE-DETECTION>
+These are ALL THE SAME QUESTION - never ask variants:
+- "What issues are you seeing?" = "What problems have you noticed?" = "What concerns you?"
+- "Which files need work?" = "Are there specific files?" = "What files concern you?"
+- "What type of X?" = "What kind of X?" = "What X are you looking for?"
 
-FORBIDDEN - DO NOT ASK:
-- Questions already asked in conversation-history (even rephrased)
-- Questions similar to ones already answered
-- Generic questions like "What else?" or "Anything else?"
-- Questions unrelated to the design goal
+If conversation-history contains ANY question about a topic, that topic is CLOSED.
+</DUPLICATE-DETECTION>
 
-CRITICAL: Read the conversation-history carefully. If a topic was already covered, DO NOT ask about it again.
-</question-quality>
+<EMPTY-ANSWER-HANDLING>
+If user answers with:
+- "(no text provided)" or "(no selection)" → They don't know/care. MOVE ON.
+- Empty text → Accept it and proceed with defaults
+- "I don't know" → Stop asking about that topic
 
-<completeness-criteria>
-Mark done:true when ALL of these are clear:
-1. Core problem/goal is understood
-2. Key requirements are identified
-3. Main technical approach is decided
-4. Critical constraints are known
-5. At least 6-8 meaningful Q&As have occurred
+Do NOT keep asking for specifics if user isn't providing them.
+</EMPTY-ANSWER-HANDLING>
 
-Do NOT end just because you've asked many questions - end when the design is ACTUALLY clear.
-</completeness-criteria>
+<WHEN-TO-STOP>
+Mark done:true when ANY of these is true:
+- User has answered 4+ substantive questions
+- Core goal and approach are clear (even if details aren't)
+- User gives vague answers repeatedly (they want you to decide)
+- You'd be asking a 3rd question on the same topic
+
+When in doubt, STOP and let the user proceed. They can always revise.
+</WHEN-TO-STOP>
 
 <session-info>
 Title: ${context.title}
-Questions asked so far: ${totalQuestions}
+Questions asked: ${totalQuestions}
 </session-info>
 
 <conversation-history>
-${conversationHistory || "(First question being answered)"}
+${conversationHistory || "(First question)"}
 </conversation-history>
 
 <latest-answer>
@@ -439,62 +445,73 @@ ${output.output}
 
                     console.log(`[brainstormer-hook] Pending questions: ${pendingCount}`);
 
-                    if (!probeResult.done && probeResult.questions) {
-                      console.log(`[brainstormer-hook] Probe returned ${probeResult.questions.length} questions`);
+                    if (!probeResult.done && probeResult.questions && probeResult.questions.length > 0) {
+                      // ENFORCE: Only take the first question (probe should only generate 1)
+                      const q = probeResult.questions[0];
+                      const questionText = q.config?.question || "Question";
+                      const normalizedText = questionText.toLowerCase().trim();
 
-                      // Build set of existing question texts for deduplication
-                      const existingQuestionTexts = new Set<string>();
-                      for (const q of context.questions.values()) {
-                        existingQuestionTexts.add(q.text.toLowerCase().trim());
-                      }
+                      console.log(`[brainstormer-hook] Probe returned question: "${questionText.substring(0, 60)}..."`);
 
-                      let pushedCount = 0;
-                      for (const q of probeResult.questions) {
-                        const questionText = q.config?.question || "Question";
-                        const normalizedText = questionText.toLowerCase().trim();
+                      // Check for duplicates using keyword extraction
+                      const extractKeywords = (text: string): Set<string> => {
+                        const stopWords = new Set(["what", "which", "how", "do", "you", "are", "is", "the", "a", "an", "to", "for", "in", "on", "of", "want", "need", "like", "would", "should", "have", "any", "there", "specific", "particular"]);
+                        return new Set(
+                          text.toLowerCase()
+                            .replace(/[?.,!]/g, "")
+                            .split(/\s+/)
+                            .filter(w => w.length > 2 && !stopWords.has(w))
+                        );
+                      };
 
-                        // Check for exact or similar duplicates
-                        let isDuplicate = existingQuestionTexts.has(normalizedText);
-                        if (!isDuplicate) {
-                          for (const existing of existingQuestionTexts) {
-                            if (existing.length > 20 && normalizedText.length > 20) {
-                              const existingCore = existing.replace(/^(which|what|how|should|do you|would you)\s+/i, "");
-                              const newCore = normalizedText.replace(/^(which|what|how|should|do you|would you)\s+/i, "");
-                              if (existingCore.includes(newCore.substring(0, 30)) || newCore.includes(existingCore.substring(0, 30))) {
-                                isDuplicate = true;
-                                console.log(`[brainstormer-hook] SKIPPING similar: "${questionText.substring(0, 50)}..."`);
-                                break;
-                              }
-                            }
-                          }
+                      const newKeywords = extractKeywords(questionText);
+                      let isDuplicate = false;
+
+                      for (const existing of context.questions.values()) {
+                        const existingKeywords = extractKeywords(existing.text);
+                        // Count overlapping keywords
+                        let overlap = 0;
+                        for (const kw of newKeywords) {
+                          if (existingKeywords.has(kw)) overlap++;
                         }
-
-                        if (!isDuplicate) {
-                          // Push to session manager and track in our context
-                          const result = sessionManager.pushQuestion(effectiveSessionId, q.type, q.config);
-                          const newId = result.question_id;
-
-                          // Add to our tracking
-                          context.questions.set(newId, {
-                            id: newId,
-                            type: q.type,
-                            text: questionText,
-                            config: q.config,
-                          });
-                          context.questionOrder.push(newId);
-                          existingQuestionTexts.add(normalizedText);
-                          pushedCount++;
+                        // If more than 50% keywords overlap, it's a duplicate
+                        if (newKeywords.size > 0 && overlap / newKeywords.size > 0.5) {
+                          console.log(`[brainstormer-hook] DUPLICATE detected (${overlap}/${newKeywords.size} keywords overlap with "${existing.text.substring(0, 40)}...")`);
+                          isDuplicate = true;
+                          break;
                         }
                       }
 
-                      console.log(`[brainstormer-hook] Pushed ${pushedCount}/${probeResult.questions.length} questions`);
-                      output.output += `\n\n## Probe Result\n${pushedCount} new questions pushed. Call get_next_answer again.`;
-                    } else if (pendingCount > 0) {
-                      console.log(`[brainstormer-hook] Probe said done but ${pendingCount} questions pending - continuing`);
-                      output.output += `\n\n## Probe Result\nProbe indicated design is ready, but ${pendingCount} questions still pending. Call get_next_answer to collect remaining answers.`;
-                    } else {
-                      // Probe said done and no pending questions - push approval question
-                      console.log(`[brainstormer-hook] Design complete - pushing approval question`);
+                      if (!isDuplicate) {
+                        const result = sessionManager.pushQuestion(effectiveSessionId, q.type, q.config);
+                        const newId = result.question_id;
+
+                        context.questions.set(newId, {
+                          id: newId,
+                          type: q.type,
+                          text: questionText,
+                          config: q.config,
+                        });
+                        context.questionOrder.push(newId);
+
+                        console.log(`[brainstormer-hook] Pushed question: ${newId}`);
+                        output.output += `\n\n## Probe Result\nNew question pushed. Call get_next_answer again.`;
+                      } else {
+                        // Duplicate detected - mark as done instead of asking again
+                        console.log(`[brainstormer-hook] Duplicate question, marking session as done`);
+                        probeResult.done = true;
+                        probeResult.reason = "Enough information gathered";
+                      }
+                    }
+
+                    // Check if we should show approval (probe said done OR duplicate detected)
+                    if (probeResult.done) {
+                      if (pendingCount > 0) {
+                        console.log(`[brainstormer-hook] Probe said done but ${pendingCount} questions pending - continuing`);
+                        output.output += `\n\n## Probe Result\nProbe indicated design is ready, but ${pendingCount} questions still pending. Call get_next_answer to collect remaining answers.`;
+                      } else {
+                        // Probe said done and no pending questions - push approval question
+                        console.log(`[brainstormer-hook] Design complete - pushing approval question`);
 
                       // Build summary from all answered questions
                       const answeredQs = context.questionOrder
@@ -539,6 +556,7 @@ If you need changes, we'll continue refining the design.`;
                       context.approvalQuestionId = approvalResult.question_id;
 
                       output.output += `\n\n## Design Ready for Approval\nPushed approval question (${approvalResult.question_id}). Call get_next_answer to get user's approval before ending session.`;
+                      }
                     }
                   } catch (parseErr) {
                     console.log(`[brainstormer-hook] Failed to parse probe response: ${parseErr}`);

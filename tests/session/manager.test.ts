@@ -145,4 +145,116 @@ describe("SessionManager", () => {
       expect(elapsed).toBeGreaterThanOrEqual(100);
     });
   });
+
+  describe("WebSocket lifecycle", () => {
+    const mockWs = { send: () => {} } as any;
+
+    describe("handleWsConnect", () => {
+      it("should mark session as connected", async () => {
+        const { session_id } = await manager.startSession({});
+
+        // The session starts disconnected
+        const sessionBefore = manager.getSession(session_id);
+        expect(sessionBefore?.wsConnected).toBe(false);
+
+        // Simulate WebSocket connection
+        manager.handleWsConnect(session_id, mockWs);
+
+        const sessionAfter = manager.getSession(session_id);
+        expect(sessionAfter?.wsConnected).toBe(true);
+      });
+    });
+
+    describe("handleWsDisconnect", () => {
+      it("should mark session as disconnected", async () => {
+        const { session_id } = await manager.startSession({});
+
+        // Connect first
+        manager.handleWsConnect(session_id, mockWs);
+        expect(manager.getSession(session_id)?.wsConnected).toBe(true);
+
+        // Then disconnect
+        manager.handleWsDisconnect(session_id);
+        expect(manager.getSession(session_id)?.wsConnected).toBe(false);
+      });
+    });
+
+    describe("concurrent waiters", () => {
+      it("should handle multiple waiters for same question", async () => {
+        const { session_id } = await manager.startSession({});
+        const { question_id } = manager.pushQuestion(session_id, "confirm", {
+          question: "Test?",
+        });
+
+        // Start two concurrent waits
+        const wait1 = manager.getAnswer({
+          question_id,
+          block: true,
+          timeout: 1000,
+        });
+        const wait2 = manager.getAnswer({
+          question_id,
+          block: true,
+          timeout: 1000,
+        });
+
+        // Simulate answer via WebSocket message
+        manager.handleWsMessage(session_id, {
+          type: "response",
+          id: question_id,
+          answer: { choice: "yes" },
+        });
+
+        // Both should resolve
+        const [result1, result2] = await Promise.all([wait1, wait2]);
+
+        expect(result1.completed).toBe(true);
+        expect(result2.completed).toBe(true);
+        expect(result1.response).toEqual({ choice: "yes" });
+        expect(result2.response).toEqual({ choice: "yes" });
+      });
+
+      it("should handle multiple session waiters correctly", async () => {
+        const { session_id } = await manager.startSession({});
+        const { question_id: q1_id } = manager.pushQuestion(session_id, "confirm", { question: "Q1?" });
+        const { question_id: q2_id } = manager.pushQuestion(session_id, "confirm", { question: "Q2?" });
+
+        // Start two concurrent session-level waits
+        const wait1 = manager.getNextAnswer({
+          session_id,
+          block: true,
+          timeout: 1000,
+        });
+        const wait2 = manager.getNextAnswer({
+          session_id,
+          block: true,
+          timeout: 1000,
+        });
+
+        // Submit first answer
+        manager.handleWsMessage(session_id, {
+          type: "response",
+          id: q1_id,
+          answer: { choice: "yes" },
+        });
+
+        // First waiter should get first answer
+        const result1 = await wait1;
+        expect(result1.completed).toBe(true);
+        expect(result1.question_id).toBe(q1_id);
+
+        // Submit second answer
+        manager.handleWsMessage(session_id, {
+          type: "response",
+          id: q2_id,
+          answer: { choice: "no" },
+        });
+
+        // Second waiter should get second answer
+        const result2 = await wait2;
+        expect(result2.completed).toBe(true);
+        expect(result2.question_id).toBe(q2_id);
+      });
+    });
+  });
 });

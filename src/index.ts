@@ -5,27 +5,22 @@ import { SessionManager } from "./session/manager";
 import { createBrainstormerTools } from "./tools";
 import { agents } from "./agents";
 
-interface ConversationEntry {
-  questionId: string;
-  questionText: string;
-  questionType: string;
-  answer: unknown;
+interface QuestionRecord {
+  id: string;
+  type: string;
+  text: string;
+  config: unknown;
+  answer?: unknown;
+  answeredAt?: number;
 }
 
 interface SessionContext {
   title: string;
   originalRequest?: string;
-  conversation: ConversationEntry[];
-  questionCount: number;
+  questions: Map<string, QuestionRecord>;  // Track ALL questions by ID
+  questionOrder: string[];  // Track order questions were added
   awaitingApproval: boolean;
   approvalQuestionId?: string;
-}
-
-/**
- * Extract question text - this is a placeholder, actual question comes from session
- */
-function extractQuestionText(_answer: unknown): string {
-  return "Question"; // Will be replaced with actual question from session
 }
 
 /**
@@ -118,18 +113,38 @@ const BrainstormerPlugin: Plugin = async (ctx) => {
           sessionsByOpenCodeSession.get(openCodeSessionId)!.add(brainstormSessionId);
         }
 
-        // Initialize conversation context
+        // Initialize conversation context with questions map
         const typedArgs = args as { title?: string; questions?: Array<{ type: string; config: { question?: string } }> };
-        const initialQuestionCount = typedArgs.questions?.length || 0;
+        const questionsMap = new Map<string, QuestionRecord>();
+        const questionOrder: string[] = [];
+
+        // Get the session to access question IDs
+        const session = sessionManager.getSession(brainstormSessionId);
+        if (session && typedArgs.questions) {
+          // Map initial questions by their IDs
+          const questionIds = Array.from(session.questions.keys());
+          typedArgs.questions.forEach((q, idx) => {
+            if (questionIds[idx]) {
+              const qId = questionIds[idx];
+              questionsMap.set(qId, {
+                id: qId,
+                type: q.type,
+                text: q.config?.question || "Question",
+                config: q.config,
+              });
+              questionOrder.push(qId);
+            }
+          });
+        }
 
         sessionContexts.set(brainstormSessionId, {
           title: typedArgs.title || "Brainstorming Session",
-          conversation: [],
-          questionCount: initialQuestionCount,
+          questions: questionsMap,
+          questionOrder,
           awaitingApproval: false,
         });
 
-        console.log(`[brainstormer] Initialized context for ${brainstormSessionId} with ${initialQuestionCount} initial questions`);
+        console.log(`[brainstormer] Initialized context for ${brainstormSessionId} with ${questionsMap.size} initial questions`);
       }
 
       return result;
@@ -210,89 +225,87 @@ const BrainstormerPlugin: Plugin = async (ctx) => {
               let context = sessionContexts.get(effectiveSessionId);
               if (!context) {
                 console.log(`[brainstormer-hook] Creating NEW context for session ${effectiveSessionId}`);
-                context = { title: "Brainstorming", conversation: [], questionCount: 0, awaitingApproval: false };
+                context = { title: "Brainstorming", questions: new Map(), questionOrder: [], awaitingApproval: false };
                 sessionContexts.set(effectiveSessionId, context);
-              } else {
-                console.log(`[brainstormer-hook] Using EXISTING context with ${context.conversation.length} Q&As`);
               }
 
-              // Check if this is the approval response
-              if (context.awaitingApproval) {
-                console.log(`[brainstormer-hook] Processing approval response`);
+              // Count answered questions
+              const answeredCount = Array.from(context.questions.values()).filter(q => q.answer !== undefined).length;
+              console.log(`[brainstormer-hook] Context has ${context.questions.size} questions, ${answeredCount} answered`);
 
-                // Extract the answer (review_section returns {decision: "approve"|"revise", feedback?: string})
-                const responseMatch = output.output.match(/\*\*Response:\*\*\s*```json\s*([\s\S]*?)\s*```/);
-                if (responseMatch) {
-                  try {
-                    const answer = JSON.parse(responseMatch[1]) as { decision?: string; feedback?: string };
-                    if (answer.decision === "approve") {
+              // Extract question ID and answer from output
+              const questionIdMatch = output.output.match(/\*\*Question ID:\*\* (q_[a-z0-9]+)/);
+              const responseMatch = output.output.match(/\*\*Response:\*\*\s*```json\s*([\s\S]*?)\s*```/);
+
+              if (questionIdMatch && responseMatch) {
+                const questionId = questionIdMatch[1];
+                try {
+                  const answer = JSON.parse(responseMatch[1]);
+
+                  // Check if this is the approval response
+                  if (context.awaitingApproval && questionId === context.approvalQuestionId) {
+                    console.log(`[brainstormer-hook] Processing approval response`);
+                    const typedAnswer = answer as { decision?: string; feedback?: string };
+                    if (typedAnswer.decision === "approve") {
                       console.log(`[brainstormer-hook] User APPROVED the design`);
                       context.awaitingApproval = false;
                       output.output += `\n\n## Design Approved!\nUser approved the design. You may now end the session and write the design document.`;
                       return; // Don't trigger probe again
                     } else {
-                      console.log(`[brainstormer-hook] User requested REVISION`);
+                      console.log(`[brainstormer-hook] User requested REVISION: ${typedAnswer.feedback}`);
                       context.awaitingApproval = false;
-                      const feedbackNote = answer.feedback ? `\nFeedback: ${answer.feedback}` : "";
+                      const feedbackNote = typedAnswer.feedback ? `\nFeedback: ${typedAnswer.feedback}` : "";
                       output.output += `\n\n## Revision Requested\nUser requested changes.${feedbackNote}\nContinuing brainstorming to address feedback...`;
                       // Fall through to trigger probe again
                     }
-                  } catch {
-                    console.log(`[brainstormer-hook] Could not parse approval response`);
                   }
-                }
-              }
 
-              // Extract Q&A from output and add to conversation
-              const questionIdMatch = output.output.match(/\*\*Question ID:\*\* (q_[a-z0-9]+)/);
-              const questionTypeMatch = output.output.match(/\*\*Question Type:\*\* (\w+)/);
-              const responseMatch = output.output.match(/\*\*Response:\*\*\s*```json\s*([\s\S]*?)\s*```/);
-
-              console.log(`[brainstormer-hook] Q&A extraction: questionIdMatch=${!!questionIdMatch}, typeMatch=${!!questionTypeMatch}, responseMatch=${!!responseMatch}`);
-
-              if (questionIdMatch && responseMatch) {
-                try {
-                  const answer = JSON.parse(responseMatch[1]);
-                  const questionId = questionIdMatch[1];
-
-                  // Check if this Q&A is already in the conversation (by questionId)
-                  const alreadyExists = context.conversation.some(e => e.questionId === questionId);
-                  if (alreadyExists) {
-                    console.log(`[brainstormer-hook] SKIPPING - already have Q&A for ${questionId}`);
-                  } else {
-                    // Get actual question text from session
+                  // Record the answer in our context
+                  let questionRecord = context.questions.get(questionId);
+                  if (!questionRecord) {
+                    // Question not in our tracking - get it from session manager
                     const session = sessionManager.getSession(effectiveSessionId);
-                    let questionText = "Question";
-                    if (session) {
-                      const question = session.questions.get(questionId);
-                      if (question?.config && typeof question.config === "object" && "question" in question.config) {
-                        questionText = String((question.config as { question: string }).question);
-                      } else {
-                        console.log(`[brainstormer-hook] WARNING: Could not get question text for ${questionId}, config:`, JSON.stringify(question?.config));
-                      }
-                    } else {
-                      console.log(`[brainstormer-hook] WARNING: Session not found: ${effectiveSessionId}`);
+                    const sessionQuestion = session?.questions.get(questionId);
+                    if (sessionQuestion) {
+                      const questionText = sessionQuestion.config && typeof sessionQuestion.config === "object" && "question" in sessionQuestion.config
+                        ? String((sessionQuestion.config as { question: string }).question)
+                        : "Question";
+                      questionRecord = {
+                        id: questionId,
+                        type: sessionQuestion.type,
+                        text: questionText,
+                        config: sessionQuestion.config,
+                      };
+                      context.questions.set(questionId, questionRecord);
+                      context.questionOrder.push(questionId);
+                      console.log(`[brainstormer-hook] Added missing question to context: ${questionId}`);
                     }
+                  }
 
-                    context.conversation.push({
-                      questionId,
-                      questionText,
-                      questionType: questionTypeMatch?.[1] || "unknown",
-                      answer,
-                    });
-                    console.log(`[brainstormer-hook] ADDED Q&A #${context.conversation.length}: [${questionId}] "${questionText.substring(0, 40)}..." -> ${JSON.stringify(answer).substring(0, 30)}`);
+                  if (questionRecord) {
+                    if (questionRecord.answer === undefined) {
+                      questionRecord.answer = answer;
+                      questionRecord.answeredAt = Date.now();
+                      console.log(`[brainstormer-hook] Recorded answer for ${questionId}: "${questionRecord.text.substring(0, 40)}..."`);
+                    } else {
+                      console.log(`[brainstormer-hook] Question ${questionId} already has answer, skipping`);
+                    }
+                  } else {
+                    console.log(`[brainstormer-hook] WARNING: Could not find question ${questionId} anywhere`);
                   }
                 } catch (parseErr) {
                   console.log(`[brainstormer-hook] Could not parse answer JSON: ${parseErr}`);
-                  console.log(`[brainstormer-hook] Raw response text: ${responseMatch[1].substring(0, 100)}`);
                 }
               } else {
-                // Log what's missing for debugging
-                console.log(`[brainstormer-hook] FAILED to extract Q&A - output preview: ${output.output.substring(0, 300)}`);
+                console.log(`[brainstormer-hook] Could not extract question ID or answer from output`);
               }
 
-              console.log(`[brainstormer-hook] Creating probe session...`);
-              console.log(`[brainstormer-hook] Conversation has ${context.conversation.length} Q&As to send to probe`);
+              // Build conversation history from ALL answered questions
+              const answeredQuestions = context.questionOrder
+                .map(id => context.questions.get(id)!)
+                .filter(q => q.answer !== undefined);
+
+              console.log(`[brainstormer-hook] Building probe context with ${answeredQuestions.length} answered questions`);
 
               const probeSession = await client.session.create({
                 body: { title: "Probe Session" },
@@ -301,15 +314,15 @@ const BrainstormerPlugin: Plugin = async (ctx) => {
               if (probeSession.data?.id) {
                 console.log(`[brainstormer-hook] Probe session created: ${probeSession.data.id}`);
 
-                // Build full conversation history for probe
-                const conversationHistory = context.conversation.map((entry, i) => {
-                  const answerText = formatAnswerForProbe(entry.questionType, entry.answer);
-                  return `Q${i + 1} [${entry.questionType}]: ${entry.questionText}\nA${i + 1}: ${answerText}`;
+                // Build conversation history from answered questions
+                const conversationHistory = answeredQuestions.map((q, i) => {
+                  const answerText = formatAnswerForProbe(q.type, q.answer);
+                  return `Q${i + 1} [${q.type}]: ${q.text}\nA${i + 1}: ${answerText}`;
                 }).join("\n\n");
 
                 console.log(`[brainstormer-hook] Conversation history preview (first 500 chars):\n${conversationHistory.substring(0, 500)}`);
 
-                const totalQuestions = context.questionCount + context.conversation.length;
+                const totalQuestions = context.questions.size;
 
                 const probePrompt = `<role>You are a brainstorming probe that helps refine ideas into actionable designs.</role>
 
@@ -429,39 +442,27 @@ ${output.output}
                     if (!probeResult.done && probeResult.questions) {
                       console.log(`[brainstormer-hook] Probe returned ${probeResult.questions.length} questions`);
 
-                      // Deduplicate questions - don't push if similar question already asked or pending
+                      // Build set of existing question texts for deduplication
                       const existingQuestionTexts = new Set<string>();
-
-                      // Add all questions from conversation history
-                      for (const entry of context.conversation) {
-                        existingQuestionTexts.add(entry.questionText.toLowerCase().trim());
-                      }
-
-                      // Add all pending questions from session
-                      if (session) {
-                        for (const q of session.questions.values()) {
-                          if (q.config && typeof q.config === "object" && "question" in q.config) {
-                            existingQuestionTexts.add(String((q.config as { question: string }).question).toLowerCase().trim());
-                          }
-                        }
+                      for (const q of context.questions.values()) {
+                        existingQuestionTexts.add(q.text.toLowerCase().trim());
                       }
 
                       let pushedCount = 0;
                       for (const q of probeResult.questions) {
-                        const newQuestionText = q.config?.question?.toLowerCase().trim() || "";
+                        const questionText = q.config?.question || "Question";
+                        const normalizedText = questionText.toLowerCase().trim();
 
-                        // Check for exact match or very similar (contains check)
-                        let isDuplicate = existingQuestionTexts.has(newQuestionText);
+                        // Check for exact or similar duplicates
+                        let isDuplicate = existingQuestionTexts.has(normalizedText);
                         if (!isDuplicate) {
-                          // Also check if any existing question is very similar (substring match)
                           for (const existing of existingQuestionTexts) {
-                            if (existing.length > 20 && newQuestionText.length > 20) {
-                              // Check if core of question overlaps (ignore "which", "what", etc.)
+                            if (existing.length > 20 && normalizedText.length > 20) {
                               const existingCore = existing.replace(/^(which|what|how|should|do you|would you)\s+/i, "");
-                              const newCore = newQuestionText.replace(/^(which|what|how|should|do you|would you)\s+/i, "");
+                              const newCore = normalizedText.replace(/^(which|what|how|should|do you|would you)\s+/i, "");
                               if (existingCore.includes(newCore.substring(0, 30)) || newCore.includes(existingCore.substring(0, 30))) {
                                 isDuplicate = true;
-                                console.log(`[brainstormer-hook] SKIPPING similar question: "${q.config?.question?.substring(0, 50)}..."`);
+                                console.log(`[brainstormer-hook] SKIPPING similar: "${questionText.substring(0, 50)}..."`);
                                 break;
                               }
                             }
@@ -469,50 +470,47 @@ ${output.output}
                         }
 
                         if (!isDuplicate) {
-                          sessionManager.pushQuestion(effectiveSessionId, q.type, q.config);
-                          existingQuestionTexts.add(newQuestionText);
+                          // Push to session manager and track in our context
+                          const result = sessionManager.pushQuestion(effectiveSessionId, q.type, q.config);
+                          const newId = result.question_id;
+
+                          // Add to our tracking
+                          context.questions.set(newId, {
+                            id: newId,
+                            type: q.type,
+                            text: questionText,
+                            config: q.config,
+                          });
+                          context.questionOrder.push(newId);
+                          existingQuestionTexts.add(normalizedText);
                           pushedCount++;
-                        } else {
-                          console.log(`[brainstormer-hook] SKIPPING duplicate: "${q.config?.question?.substring(0, 50)}..."`);
                         }
                       }
 
-                      console.log(`[brainstormer-hook] Pushed ${pushedCount}/${probeResult.questions.length} questions (${probeResult.questions.length - pushedCount} duplicates skipped)`);
+                      console.log(`[brainstormer-hook] Pushed ${pushedCount}/${probeResult.questions.length} questions`);
                       output.output += `\n\n## Probe Result\n${pushedCount} new questions pushed. Call get_next_answer again.`;
                     } else if (pendingCount > 0) {
-                      // Probe said done, but there are still pending questions!
                       console.log(`[brainstormer-hook] Probe said done but ${pendingCount} questions pending - continuing`);
                       output.output += `\n\n## Probe Result\nProbe indicated design is ready, but ${pendingCount} questions still pending. Call get_next_answer to collect remaining answers.`;
                     } else {
                       // Probe said done and no pending questions - push approval question
                       console.log(`[brainstormer-hook] Design complete - pushing approval question`);
 
-                      // Build summary from conversation - show question: answer pairs
+                      // Build summary from all answered questions
+                      const answeredQs = context.questionOrder
+                        .map(id => context.questions.get(id)!)
+                        .filter(q => q.answer !== undefined);
+
                       console.log(`[brainstormer-hook] ========== BUILDING SUMMARY ==========`);
-                      console.log(`[brainstormer-hook] Total Q&As in context: ${context.conversation.length}`);
-
-                      // Log all Q&As for debugging
-                      context.conversation.forEach((entry, i) => {
-                        console.log(`[brainstormer-hook]   ${i + 1}. [${entry.questionId}] "${entry.questionText.substring(0, 50)}..."`);
+                      console.log(`[brainstormer-hook] Total answered: ${answeredQs.length}`);
+                      answeredQs.forEach((q, i) => {
+                        console.log(`[brainstormer-hook]   ${i + 1}. "${q.text.substring(0, 50)}..."`);
                       });
-
-                      // Deduplicate by questionId (should be unique, but just in case)
-                      const seenIds = new Set<string>();
-                      const uniqueConversation = context.conversation.filter((entry) => {
-                        if (seenIds.has(entry.questionId)) {
-                          console.log(`[brainstormer-hook] Skipping duplicate ID: ${entry.questionId}`);
-                          return false;
-                        }
-                        seenIds.add(entry.questionId);
-                        return true;
-                      });
-
-                      console.log(`[brainstormer-hook] After dedup by ID: ${uniqueConversation.length} unique Q&As`);
                       console.log(`[brainstormer-hook] ======================================`);
 
-                      const summaryLines = uniqueConversation.map((entry) => {
-                        const answerText = formatAnswerForProbe(entry.questionType, entry.answer);
-                        return `- **${entry.questionText}**: ${answerText}`;
+                      const summaryLines = answeredQs.map((q) => {
+                        const answerText = formatAnswerForProbe(q.type, q.answer);
+                        return `- **${q.text}**: ${answerText}`;
                       });
 
                       const summaryMarkdown = `## Design Summary

@@ -49,6 +49,8 @@ describe("Orchestrator Flow Integration", () => {
       // Create mock client that returns "done" after first probe call
       const mockClient = {
         session: {
+          create: mock(async () => ({ data: { id: "child-session-123" } })),
+          delete: mock(async () => ({})),
           prompt: mock(async () => {
             probeCallCount++;
             if (probeCallCount === 1) {
@@ -115,6 +117,8 @@ describe("Orchestrator Flow Integration", () => {
       let probeCount = 0;
       const mockClient = {
         session: {
+          create: mock(async () => ({ data: { id: "child-session-123" } })),
+          delete: mock(async () => ({})),
           prompt: mock(async () => {
             probeCount++;
             if (probeCount === 1) {
@@ -257,6 +261,8 @@ describe("Orchestrator Flow Integration", () => {
       let probeCount = 0;
       const mockClient = {
         session: {
+          create: mock(async () => ({ data: { id: "child-session-123" } })),
+          delete: mock(async () => ({})),
           prompt: mock(async () => {
             probeCount++;
             if (probeCount === 1) {
@@ -363,6 +369,8 @@ describe("Orchestrator Flow Integration", () => {
       let probeCallCount = 0;
       const mockClient = {
         session: {
+          create: mock(async () => ({ data: { id: "child-session-123" } })),
+          delete: mock(async () => ({})),
           prompt: mock(async () => {
             probeCallCount++;
             if (probeCallCount === 1) {

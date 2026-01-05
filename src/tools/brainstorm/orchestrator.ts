@@ -73,22 +73,17 @@ export class BrainstormOrchestrator {
 
     // Create a child session for internal LLM calls (probe/summarize)
     // This avoids deadlock from prompting the same session that's running the tool
-    let llmSessionId: string | undefined;
-    try {
-      const childSession = await this.client.session.create({
-        body: {
-          parentID: this.opencodeSessionId,
-          title: "Brainstorm LLM Session",
-        },
-      });
-      llmSessionId = childSession.data?.id;
-    } catch (e) {
-      // Fall back to parent session if child creation fails
-      llmSessionId = undefined;
-    }
+    const childSession = await this.client.session.create({
+      body: {
+        parentID: this.opencodeSessionId,
+        title: "Brainstorm LLM Session",
+      },
+    });
 
-    // Use child session for LLM calls, or parent as fallback
-    const llmSessionForCalls = llmSessionId ?? this.opencodeSessionId;
+    const llmSessionId = childSession.data?.id;
+    if (!llmSessionId) {
+      throw new BrainstormError("llm_error", "Failed to create child session for LLM calls");
+    }
 
     // Start browser session with initial questions
     const sessionResult = await this.sessionManager.startSession({
@@ -151,7 +146,7 @@ export class BrainstormOrchestrator {
         }
 
         // Call probe to get next questions (can return 1-5)
-        const probeResult = await callProbe(this.client, llmSessionForCalls, request, answers, llmModel);
+        const probeResult = await callProbe(this.client, llmSessionId, request, answers, llmModel);
 
         if (probeResult.done) {
           done = true;
@@ -183,7 +178,7 @@ export class BrainstormOrchestrator {
       await this.sessionManager.endSession(brainstormSessionId);
 
       // Generate summary
-      const summary = await callSummarize(this.client, llmSessionForCalls, request, context, answers, llmModel);
+      const summary = await callSummarize(this.client, llmSessionId, request, context, answers, llmModel);
 
       // Clean up child session if we created one
       if (llmSessionId) {

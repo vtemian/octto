@@ -21,6 +21,8 @@ describe("Brainstorm Integration", () => {
       let probeCallCount = 0;
       const mockClient = {
         session: {
+          create: mock(async () => ({ data: { id: "child-session-123" } })),
+          delete: mock(async () => ({})),
           prompt: mock(async () => {
             probeCallCount++;
             if (probeCallCount === 1) {

@@ -201,7 +201,7 @@ describe("Probe LLM Helper", () => {
       await callProbe(mockClient, "session-1", "test", []);
 
       expect(capturedArgs.body.model.providerID).toBe("anthropic");
-      expect(capturedArgs.body.model.modelID).toBe("claude-sonnet-4");
+      expect(capturedArgs.body.model.modelID).toBe("claude-opus-4-5");
     });
 
     it("should use custom model when specified", async () => {

@@ -11,7 +11,7 @@ describe("constants", () => {
     expect(DEFAULT_MAX_QUESTIONS).toBe(15);
   });
 
-  it("should export DEFAULT_PROBE_MODEL as claude-sonnet-4", () => {
-    expect(DEFAULT_PROBE_MODEL).toBe("anthropic/claude-sonnet-4");
+  it("should export DEFAULT_PROBE_MODEL as claude-opus-4-5", () => {
+    expect(DEFAULT_PROBE_MODEL).toBe("anthropic/claude-opus-4-5");
   });
 });

@@ -17,6 +17,8 @@ interface SessionContext {
   originalRequest?: string;
   conversation: ConversationEntry[];
   questionCount: number;
+  awaitingApproval: boolean;
+  approvalQuestionId?: string;
 }
 
 /**
@@ -129,6 +131,7 @@ const BrainstormerPlugin: Plugin = async (ctx) => {
           title: typedArgs.title || "Brainstorming Session",
           conversation: [],
           questionCount: initialQuestionCount,
+          awaitingApproval: false,
         });
 
         console.log(`[brainstormer] Initialized context for ${brainstormSessionId} with ${initialQuestionCount} initial questions`);
@@ -203,8 +206,35 @@ const BrainstormerPlugin: Plugin = async (ctx) => {
               // Get or create session context
               let context = sessionContexts.get(effectiveSessionId);
               if (!context) {
-                context = { title: "Brainstorming", conversation: [], questionCount: 0 };
+                context = { title: "Brainstorming", conversation: [], questionCount: 0, awaitingApproval: false };
                 sessionContexts.set(effectiveSessionId, context);
+              }
+
+              // Check if this is the approval response
+              if (context.awaitingApproval) {
+                console.log(`[brainstormer-hook] Processing approval response`);
+
+                // Extract the answer
+                const responseMatch = output.output.match(/\*\*Response:\*\*\s*```json\s*([\s\S]*?)\s*```/);
+                if (responseMatch) {
+                  try {
+                    const answer = JSON.parse(responseMatch[1]) as { choice?: string };
+                    if (answer.choice === "yes") {
+                      console.log(`[brainstormer-hook] User APPROVED the design`);
+                      context.awaitingApproval = false;
+                      output.output += `\n\n## Design Approved!\nUser approved the design. You may now end the session and write the design document.`;
+                      return; // Don't trigger probe again
+                    } else {
+                      console.log(`[brainstormer-hook] User REJECTED - needs changes`);
+                      context.awaitingApproval = false;
+                      // Continue with probe to get more questions
+                      output.output += `\n\n## Changes Requested\nUser requested changes. Continuing brainstorming...`;
+                      // Fall through to trigger probe again
+                    }
+                  } catch {
+                    console.log(`[brainstormer-hook] Could not parse approval response`);
+                  }
+                }
               }
 
               // Extract Q&A from output and add to conversation
@@ -345,6 +375,17 @@ ${output.output}
 
                     const probeResult = JSON.parse(jsonStr.trim());
 
+                    // Check for pending questions in the session
+                    const session = sessionManager.getSession(effectiveSessionId);
+                    let pendingCount = 0;
+                    if (session) {
+                      for (const q of session.questions.values()) {
+                        if (q.status === "pending") pendingCount++;
+                      }
+                    }
+
+                    console.log(`[brainstormer-hook] Pending questions: ${pendingCount}`);
+
                     if (!probeResult.done && probeResult.questions) {
                       console.log(`[brainstormer-hook] Pushing ${probeResult.questions.length} questions`);
 
@@ -353,8 +394,35 @@ ${output.output}
                       }
 
                       output.output += `\n\n## Probe Result\n${probeResult.questions.length} new questions pushed. Call get_next_answer again.`;
+                    } else if (pendingCount > 0) {
+                      // Probe said done, but there are still pending questions!
+                      console.log(`[brainstormer-hook] Probe said done but ${pendingCount} questions pending - continuing`);
+                      output.output += `\n\n## Probe Result\nProbe indicated design is ready, but ${pendingCount} questions still pending. Call get_next_answer to collect remaining answers.`;
                     } else {
-                      output.output += `\n\n## Probe Result\nBrainstorming complete! Reason: ${probeResult.reason || "Design is complete"}`;
+                      // Probe said done and no pending questions - push approval question
+                      console.log(`[brainstormer-hook] Design complete - pushing approval question`);
+
+                      // Build summary from conversation
+                      const summaryLines = context.conversation.map((entry, i) => {
+                        const answerText = formatAnswerForProbe(entry.questionType, entry.answer);
+                        return `${i + 1}. ${answerText}`;
+                      });
+
+                      const summaryText = `## Brainstorming Summary\n\n**Reason:** ${probeResult.reason || "Design exploration complete"}\n\n**Decisions made:**\n${summaryLines.join("\n")}\n\nDo you approve this design direction?`;
+
+                      // Push approval question
+                      const approvalResult = sessionManager.pushQuestion(effectiveSessionId, "confirm", {
+                        question: "Approve this design?",
+                        context: summaryText,
+                        yesLabel: "Approve & Continue",
+                        noLabel: "Need Changes",
+                      });
+
+                      // Mark that we're awaiting approval
+                      context.awaitingApproval = true;
+                      context.approvalQuestionId = approvalResult.question_id;
+
+                      output.output += `\n\n## Design Ready for Approval\nPushed approval question (${approvalResult.question_id}). Call get_next_answer to get user's approval before ending session.`;
                     }
                   } catch (parseErr) {
                     console.log(`[brainstormer-hook] Failed to parse probe response: ${parseErr}`);

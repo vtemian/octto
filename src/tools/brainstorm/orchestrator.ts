@@ -73,6 +73,7 @@ export class BrainstormOrchestrator {
 
     // Create a child session for internal LLM calls (probe/summarize)
     // This avoids deadlock from prompting the same session that's running the tool
+    console.log("[brainstorm] Creating child session for LLM calls...");
     const childSession = await this.client.session.create({
       body: {
         parentID: this.opencodeSessionId,
@@ -84,6 +85,7 @@ export class BrainstormOrchestrator {
     if (!llmSessionId) {
       throw new BrainstormError("llm_error", "Failed to create child session for LLM calls");
     }
+    console.log("[brainstorm] Child session created:", llmSessionId);
 
     // Start browser session with initial questions
     const sessionResult = await this.sessionManager.startSession({
@@ -113,11 +115,14 @@ export class BrainstormOrchestrator {
 
       while (!done && questionCount <= maxQ) {
         // Wait for next answer
+        console.log("[brainstorm] Waiting for next answer...");
         const answerResult = await this.sessionManager.getNextAnswer({
           session_id: brainstormSessionId,
           block: true,
           timeout: DEFAULT_ANSWER_TIMEOUT_MS,
         });
+
+        console.log("[brainstorm] Got answer result:", answerResult.status, answerResult.completed);
 
         // Handle timeout or no pending
         if (!answerResult.completed) {
@@ -125,6 +130,7 @@ export class BrainstormOrchestrator {
             throw new BrainstormError("timeout", "Timed out waiting for user response");
           }
           if (answerResult.status === "none_pending") {
+            console.log("[brainstorm] No pending questions, breaking");
             break;
           }
           continue;
@@ -138,15 +144,19 @@ export class BrainstormOrchestrator {
             type: answerResult.question_type as import("../../session/types").QuestionType,
             answer: answerResult.response,
           });
+          console.log("[brainstorm] Recorded answer:", qInfo.text);
         }
 
         // Check max before calling probe
         if (questionCount >= maxQ) {
+          console.log("[brainstorm] Max questions reached, breaking");
           break;
         }
 
         // Call probe to get next questions (can return 1-5)
+        console.log("[brainstorm] Calling probe...");
         const probeResult = await callProbe(this.client, llmSessionId, request, answers, llmModel);
+        console.log("[brainstorm] Probe result:", probeResult.done ? "done" : `${probeResult.questions?.length || 0} questions`);
 
         if (probeResult.done) {
           done = true;

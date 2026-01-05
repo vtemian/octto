@@ -127,6 +127,12 @@ ${qas || "(no questions yet)"}`;
       finding: tool.schema.string().describe("Summary of what was learned"),
     },
     execute: async (args) => {
+      const state = await stateManager.getSession(args.session_id);
+      if (!state) return `Error: Session not found: ${args.session_id}`;
+
+      const branch = state.branches[args.branch_id];
+      if (!branch) return `Error: Branch not found: ${args.branch_id}`;
+
       await stateManager.completeBranch(args.session_id, args.branch_id, args.finding);
       return `## Branch Completed
 
@@ -153,20 +159,19 @@ ${qas || "(no questions yet)"}`;
       if (!state) return `Error: Session not found: ${args.session_id}`;
       if (!state.browser_session_id) return `Error: No browser session`;
 
-      const questionId = generateId("q");
       const questionText =
         typeof args.question.config === "object" && "question" in args.question.config
           ? String((args.question.config as { question: string }).question)
           : "Question";
 
-      // Push to browser
-      sessionManager.pushQuestion(
+      // Push to browser and get the assigned question ID
+      const { question_id: questionId } = sessionManager.pushQuestion(
         state.browser_session_id,
         args.question.type as QuestionType,
         args.question.config as unknown as QuestionConfig,
       );
 
-      // Record in state
+      // Record in state using the ID from pushQuestion
       await stateManager.addQuestionToBranch(args.session_id, args.branch_id, {
         id: questionId,
         type: args.question.type as QuestionType,

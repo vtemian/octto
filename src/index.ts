@@ -176,23 +176,33 @@ const BrainstormerPlugin: Plugin = async (ctx) => {
           console.log(`[brainstormer-hook] TRIGGERING PROBE PROGRAMMATICALLY`);
 
           try {
-            // Extract session_id from the output
-            const sessionIdMatch = output.output.match(/ses_[a-z0-9]+/);
-            const brainstormSessionId = sessionIdMatch?.[0];
+            // Get brainstorm session ID for this OpenCode session
+            const openCodeSessionId = input.sessionID;
+            const brainstormSessions = sessionsByOpenCodeSession.get(openCodeSessionId);
+            let effectiveSessionId: string | undefined;
 
-            // Fallback to any tracked session
-            const trackedSessions = Array.from(sessionsByOpenCodeSession.values()).flatMap((s) => Array.from(s));
-            const fallbackSessionId = trackedSessions[0];
-            const effectiveSessionId = brainstormSessionId || fallbackSessionId;
+            if (brainstormSessions && brainstormSessions.size > 0) {
+              // Use the most recent brainstorm session for this OpenCode session
+              effectiveSessionId = Array.from(brainstormSessions).pop();
+            }
 
-            console.log(`[brainstormer-hook] Session ID: ${effectiveSessionId}`);
+            // Fallback: try to extract from output
+            if (!effectiveSessionId) {
+              const sessionIdMatch = output.output.match(/ses_[a-z0-9]+/);
+              effectiveSessionId = sessionIdMatch?.[0];
+            }
+
+            console.log(`[brainstormer-hook] OpenCode session: ${openCodeSessionId}, Brainstorm session: ${effectiveSessionId}`);
 
             if (effectiveSessionId && client) {
               // Get or create session context
               let context = sessionContexts.get(effectiveSessionId);
               if (!context) {
+                console.log(`[brainstormer-hook] Creating NEW context for session ${effectiveSessionId}`);
                 context = { title: "Brainstorming", conversation: [], questionCount: 0, awaitingApproval: false };
                 sessionContexts.set(effectiveSessionId, context);
+              } else {
+                console.log(`[brainstormer-hook] Using EXISTING context with ${context.conversation.length} Q&As`);
               }
 
               // Check if this is the approval response
@@ -248,7 +258,7 @@ const BrainstormerPlugin: Plugin = async (ctx) => {
                     questionType: questionTypeMatch?.[1] || "unknown",
                     answer,
                   });
-                  console.log(`[brainstormer-hook] Added Q&A: "${questionText}" -> ${JSON.stringify(answer).substring(0, 50)}`);
+                  console.log(`[brainstormer-hook] Added Q&A #${context.conversation.length}: "${questionText.substring(0, 40)}..." -> ${JSON.stringify(answer).substring(0, 30)}`);
                 } catch {
                   console.log(`[brainstormer-hook] Could not parse answer JSON`);
                 }

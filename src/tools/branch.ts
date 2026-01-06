@@ -29,7 +29,7 @@ export function createBranchTools(stateStore: StateStore, sessions: SessionStore
             scope: tool.schema.string(),
             initial_question: tool.schema.object({
               type: tool.schema.string(),
-              config: tool.schema.object({}).passthrough(),
+              config: tool.schema.looseObject({}),
             }),
           }),
         )

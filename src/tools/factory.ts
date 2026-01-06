@@ -61,7 +61,7 @@ The question will appear in the browser for the user to answer.`,
           "rate",
         ])
         .describe("Question type"),
-      config: tool.schema.object({}).passthrough().describe("Question configuration (varies by type)"),
+      config: tool.schema.looseObject({}).describe("Question configuration (varies by type)"),
     },
     execute: async (args) => {
       try {

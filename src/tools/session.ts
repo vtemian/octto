@@ -27,7 +27,7 @@ REQUIRED: You MUST provide at least 1 question. Will fail without questions.`,
                 "slider",
               ])
               .describe("Question type"),
-            config: tool.schema.object({}).passthrough().describe("Question config (varies by type)"),
+            config: tool.schema.looseObject({}).describe("Question config (varies by type)"),
           }),
         )
         .describe("REQUIRED: Initial questions to display when browser opens. Must have at least 1."),

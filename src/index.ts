@@ -3,8 +3,12 @@ import type { Plugin } from "@opencode-ai/plugin";
 import { SessionManager } from "./session/manager";
 import { createBrainstormerTools } from "./tools";
 import { agents } from "./agents";
+import { loadBrainstormerConfig, mergeAgentConfigs } from "./config-loader";
 
 const BrainstormerPlugin: Plugin = async (ctx) => {
+  // Load user configuration and merge with default agents
+  const userConfig = await loadBrainstormerConfig();
+  const mergedAgents = mergeAgentConfigs(agents, userConfig);
   const sessionManager = new SessionManager();
   const sessionsByOpenCodeSession = new Map<string, Set<string>>();
 
@@ -42,7 +46,7 @@ const BrainstormerPlugin: Plugin = async (ctx) => {
     config: async (config) => {
       config.agent = {
         ...config.agent,
-        ...agents,
+        ...mergedAgents,
       };
     },
 

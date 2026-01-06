@@ -28,10 +28,14 @@ export class StatePersistence {
   }
 
   async save(state: BrainstormState): Promise<void> {
+    console.log(`[StatePersistence.save] Saving session ${state.session_id}`);
+    console.log(`[StatePersistence.save] Base dir: ${this.baseDir}, cwd: ${process.cwd()}`);
     this.ensureDir();
     const filePath = this.getFilePath(state.session_id);
+    console.log(`[StatePersistence.save] File path: ${filePath}`);
     state.updated_at = Date.now();
     await Bun.write(filePath, JSON.stringify(state, null, 2));
+    console.log(`[StatePersistence.save] Write complete`);
   }
 
   async load(sessionId: string): Promise<BrainstormState | null> {

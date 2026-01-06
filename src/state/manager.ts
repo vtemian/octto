@@ -14,6 +14,7 @@ export class StateManager {
     request: string,
     branches: CreateBranchInput[],
   ): Promise<BrainstormState> {
+    console.log(`[StateManager.createSession] Creating session ${sessionId} with ${branches.length} branches`);
     const branchMap: Record<string, Branch> = {};
     const branchOrder: string[] = [];
 
@@ -68,6 +69,7 @@ export class StateManager {
   }
 
   async recordAnswer(sessionId: string, questionId: string, answer: unknown): Promise<void> {
+    console.log(`[StateManager.recordAnswer] Recording answer for question ${questionId} in session ${sessionId}`);
     const state = await this.persistence.load(sessionId);
     if (!state) throw new Error(`Session not found: ${sessionId}`);
 

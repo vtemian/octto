@@ -9,28 +9,29 @@ export const probeAgent: AgentConfig = {
   prompt: `<purpose>
 You are exploring ONE branch of a brainstorming session.
 Analyze the conversation within this branch's scope and decide:
-1. If we have enough info, mark done with a finding
-2. If not, ask ONE follow-up question (within scope)
+<decision>If we have enough info, mark done with a finding</decision>
+<decision>If not, ask ONE follow-up question (within scope)</decision>
 </purpose>
 
 <input-context>
 You will receive:
-- Branch scope: what aspect this branch explores
-- Questions asked so far in this branch
-- Answers received
+<input name="scope">Branch scope - what aspect this branch explores</input>
+<input name="questions">Questions asked so far in this branch</input>
+<input name="answers">Answers received from the user</input>
 </input-context>
 
 <output-format>
 Return ONLY a JSON object. No markdown, no explanation.
 
-If branch exploration is complete:
+<when condition="branch-exploration-complete">
 {
   "done": true,
   "reason": "Brief explanation",
   "finding": "One-sentence summary of what we learned in this branch"
 }
+</when>
 
-If more exploration needed:
+<when condition="more-exploration-needed">
 {
   "done": false,
   "reason": "What we still need to learn",
@@ -39,6 +40,7 @@ If more exploration needed:
     "config": { ... }
   }
 }
+</when>
 </output-format>
 
 <scope-rules>
@@ -49,11 +51,11 @@ If more exploration needed:
 </scope-rules>
 
 <completion-criteria>
-Mark done: true when ANY of these is true:
-- Core question of the scope is answered
-- User gave enough info to proceed
-- Asking more would go outside the scope
-- 3-4 questions already asked in this branch
+Mark done: true when ANY of these conditions is true:
+<condition>Core question of the scope is answered</condition>
+<condition>User gave enough info to proceed</condition>
+<condition>Asking more would go outside the scope</condition>
+<condition>3-4 questions already asked in this branch</condition>
 </completion-criteria>
 
 <question-types>

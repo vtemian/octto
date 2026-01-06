@@ -309,6 +309,7 @@ export class SessionManager {
       const cleanup = this.sessionWaiters.registerWaiter(input.session_id, ({ questionId, response }) => {
         if (timeoutId) clearTimeout(timeoutId);
         const question = session.questions.get(questionId);
+        if (question) question.retrieved = true;
         resolve({
           completed: true,
           question_id: questionId,
@@ -425,6 +426,7 @@ export class SessionManager {
     }
 
     if (message.type === "response") {
+      console.log(`[SessionManager.handleWsMessage] Response received for question ${message.id}`);
       const session = this.sessions.get(sessionId);
       if (!session) return;
 
@@ -434,6 +436,7 @@ export class SessionManager {
       question.status = "answered";
       question.answeredAt = new Date();
       question.response = message.answer;
+      console.log(`[SessionManager.handleWsMessage] Answer stored in browser session: ${JSON.stringify(message.answer).substring(0, 100)}`);
 
       // Notify question-specific waiters (all of them)
       this.responseWaiters.notifyAll(message.id, message.answer);

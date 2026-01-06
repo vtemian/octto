@@ -140,11 +140,31 @@ function extractAnswerSummary(questionText: string, answer: Record<string, unkno
   if (answer.value !== undefined) {
     return String(answer.value);
   }
+  // Handle ranking answers: { ranking: [{id, rank}, ...] }
+  if (answer.ranking && Array.isArray(answer.ranking)) {
+    const ranking = answer.ranking as Array<{ id: string; rank: number }>;
+    const sorted = [...ranking].sort((a, b) => a.rank - b.rank);
+    return sorted.map((r) => r.id).join(" → ");
+  }
+  // Handle ratings answers: { ratings: {key: value, ...} }
+  if (answer.ratings && typeof answer.ratings === "object") {
+    const ratings = answer.ratings as Record<string, number>;
+    const entries = Object.entries(ratings);
+    if (entries.length === 0) return "no ratings";
+    // Show top-rated items
+    const sorted = entries.sort((a, b) => b[1] - a[1]);
+    return sorted.slice(0, 3).map(([k, v]) => `${k}: ${v}`).join(", ");
+  }
 
   // Fallback: try to extract any meaningful value
   const values = Object.values(answer).filter((v) => v !== undefined && v !== null);
   if (values.length > 0) {
-    return String(values[0]);
+    const val = values[0];
+    // Don't stringify objects/arrays - they produce [object Object]
+    if (typeof val === "object") {
+      return "response received";
+    }
+    return String(val);
   }
   return "unspecified";
 }

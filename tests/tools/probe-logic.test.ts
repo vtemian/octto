@@ -192,6 +192,62 @@ describe("evaluateBranch", () => {
 
       expect(result.finding).toContain("8");
     });
+
+    it("should handle ranking answers", () => {
+      const branch = createBranch({
+        scope: "Feature priority",
+        questions: [
+          {
+            id: "q1",
+            type: "rank",
+            text: "Rank features",
+            config: {},
+            answer: {
+              ranking: [
+                { id: "security", rank: 2 },
+                { id: "performance", rank: 1 },
+                { id: "usability", rank: 3 },
+              ],
+            },
+          },
+          { id: "q2", type: "pick_one", text: "Priority?", config: {}, answer: { selected: "simplicity" } },
+          { id: "q3", type: "confirm", text: "Ready?", config: {}, answer: { choice: "yes" } },
+        ],
+      });
+
+      const result = evaluateBranch(branch);
+
+      // Should show ranked items in order
+      expect(result.finding).toContain("performance → security → usability");
+    });
+
+    it("should handle ratings answers", () => {
+      const branch = createBranch({
+        scope: "Satisfaction feedback",
+        questions: [
+          {
+            id: "q1",
+            type: "rate",
+            text: "Rate features",
+            config: {},
+            answer: {
+              ratings: {
+                branching: 5,
+                async: 3,
+                summaries: 4,
+              },
+            },
+          },
+          { id: "q2", type: "pick_one", text: "Priority?", config: {}, answer: { selected: "quality" } },
+          { id: "q3", type: "confirm", text: "Ready?", config: {}, answer: { choice: "yes" } },
+        ],
+      });
+
+      const result = evaluateBranch(branch);
+
+      // Should show top-rated items
+      expect(result.finding).toContain("branching: 5");
+    });
   });
 
   describe("scope-based priority options", () => {

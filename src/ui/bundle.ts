@@ -400,7 +400,8 @@ export function getHtmlBundle(): string {
     .branch-subtitle {
       font-size: 0.75rem;
       color: var(--foreground-subtle);
-      margin-bottom: 0.25rem;
+      margin-top: 0.25rem;
+      margin-bottom: 0.75rem;
     }
 
     .thinking {
@@ -786,8 +787,8 @@ export function getHtmlBundle(): string {
         html += '<div class="card-answered-header" onclick="toggleAnswered(\\'' + q.id + '\\')">';
         html += '<span class="check">[OK]</span>';
         html += '<div style="flex: 1;">';
-        if (branchName) html += '<div class="branch-subtitle" style="margin-bottom: 0;">' + escapeHtml(branchName) + '</div>';
         html += '<span>' + escapeHtml(q.config.question) + '</span>';
+        if (branchName) html += '<div class="branch-subtitle" style="margin-bottom: 0; margin-top: 0.125rem;">' + escapeHtml(branchName) + '</div>';
         html += '</div>';
         html += '<span class="toggle">' + (isExpanded ? '▲ collapse' : '▼ view') + '</span>';
         html += '</div>';
@@ -833,10 +834,10 @@ export function getHtmlBundle(): string {
         remainingContext = remainingContext.substring(branchMatch[0].length);
       }
 
+      html += '<div class="question-text">' + escapeHtml(config.question) + '</div>';
       if (branchName) {
         html += '<div class="branch-subtitle">' + escapeHtml(branchName) + '</div>';
       }
-      html += '<div class="question-text">' + escapeHtml(config.question) + '</div>';
       if (remainingContext) {
         html += '<div class="context">' + escapeHtml(remainingContext) + '</div>';
       }

@@ -4,58 +4,61 @@ import { join } from "node:path";
 
 import type { BrainstormState } from "./types";
 
-export class StatePersistence {
-  private baseDir: string;
+export interface StatePersistence {
+  save: (state: BrainstormState) => Promise<void>;
+  load: (sessionId: string) => Promise<BrainstormState | null>;
+  delete: (sessionId: string) => Promise<void>;
+  list: () => Promise<string[]>;
+}
 
-  constructor(baseDir: string = ".brainstorm") {
-    this.baseDir = baseDir;
+function validateSessionId(sessionId: string): void {
+  if (!/^[a-zA-Z0-9_-]+$/.test(sessionId)) {
+    throw new Error(`Invalid session ID: ${sessionId}`);
+  }
+}
+
+export function createStatePersistence(baseDir = ".brainstorm"): StatePersistence {
+  function getFilePath(sessionId: string): string {
+    validateSessionId(sessionId);
+    return join(baseDir, `${sessionId}.json`);
   }
 
-  private validateSessionId(sessionId: string): void {
-    if (!/^[a-zA-Z0-9_-]+$/.test(sessionId)) {
-      throw new Error(`Invalid session ID: ${sessionId}`);
+  function ensureDir(): void {
+    if (!existsSync(baseDir)) {
+      mkdirSync(baseDir, { recursive: true });
     }
   }
 
-  private getFilePath(sessionId: string): string {
-    this.validateSessionId(sessionId);
-    return join(this.baseDir, `${sessionId}.json`);
-  }
+  return {
+    async save(state: BrainstormState): Promise<void> {
+      ensureDir();
+      const filePath = getFilePath(state.session_id);
+      state.updated_at = Date.now();
+      await Bun.write(filePath, JSON.stringify(state, null, 2));
+    },
 
-  private ensureDir(): void {
-    if (!existsSync(this.baseDir)) {
-      mkdirSync(this.baseDir, { recursive: true });
-    }
-  }
+    async load(sessionId: string): Promise<BrainstormState | null> {
+      const filePath = getFilePath(sessionId);
+      if (!existsSync(filePath)) {
+        return null;
+      }
+      const content = await Bun.file(filePath).text();
+      return JSON.parse(content) as BrainstormState;
+    },
 
-  async save(state: BrainstormState): Promise<void> {
-    this.ensureDir();
-    const filePath = this.getFilePath(state.session_id);
-    state.updated_at = Date.now();
-    await Bun.write(filePath, JSON.stringify(state, null, 2));
-  }
+    async delete(sessionId: string): Promise<void> {
+      const filePath = getFilePath(sessionId);
+      if (existsSync(filePath)) {
+        rmSync(filePath);
+      }
+    },
 
-  async load(sessionId: string): Promise<BrainstormState | null> {
-    const filePath = this.getFilePath(sessionId);
-    if (!existsSync(filePath)) {
-      return null;
-    }
-    const content = await Bun.file(filePath).text();
-    return JSON.parse(content) as BrainstormState;
-  }
-
-  async delete(sessionId: string): Promise<void> {
-    const filePath = this.getFilePath(sessionId);
-    if (existsSync(filePath)) {
-      rmSync(filePath);
-    }
-  }
-
-  async list(): Promise<string[]> {
-    if (!existsSync(this.baseDir)) {
-      return [];
-    }
-    const files = readdirSync(this.baseDir);
-    return files.filter((f) => f.endsWith(".json")).map((f) => f.replace(".json", ""));
-  }
+    async list(): Promise<string[]> {
+      if (!existsSync(baseDir)) {
+        return [];
+      }
+      const files = readdirSync(baseDir);
+      return files.filter((f) => f.endsWith(".json")).map((f) => f.replace(".json", ""));
+    },
+  };
 }

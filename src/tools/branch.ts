@@ -1,7 +1,7 @@
 // src/tools/branch.ts
 import { tool } from "@opencode-ai/plugin/tool";
 import type { QuestionConfig, QuestionType, SessionStore } from "@session";
-import type { StateManager } from "@state";
+import type { StateStore } from "@state";
 
 import { evaluateBranch } from "./probe-logic";
 
@@ -14,7 +14,7 @@ function generateId(prefix: string): string {
   return result;
 }
 
-export function createBranchTools(stateManager: StateManager, sessions: SessionStore) {
+export function createBranchTools(stateStore: StateStore, sessions: SessionStore) {
   const create_brainstorm = tool({
     description: "Create a new brainstorm session with exploration branches",
     args: {
@@ -36,7 +36,7 @@ export function createBranchTools(stateManager: StateManager, sessions: SessionS
       const sessionId = generateId("ses");
 
       // Create state with branches
-      await stateManager.createSession(
+      await stateStore.createSession(
         sessionId,
         args.request,
         args.branches.map((b) => ({ id: b.id, scope: b.scope })),
@@ -57,7 +57,7 @@ export function createBranchTools(stateManager: StateManager, sessions: SessionS
         questions: initialQuestions,
       });
 
-      await stateManager.setBrowserSessionId(sessionId, browserSession.session_id);
+      await stateStore.setBrowserSessionId(sessionId, browserSession.session_id);
 
       // Record initial questions in state
       for (let i = 0; i < args.branches.length; i++) {
@@ -69,7 +69,7 @@ export function createBranchTools(stateManager: StateManager, sessions: SessionS
               ? String(branch.initial_question.config.question)
               : "Question";
 
-          await stateManager.addQuestionToBranch(sessionId, branch.id, {
+          await stateStore.addQuestionToBranch(sessionId, branch.id, {
             id: questionId,
             type: branch.initial_question.type as QuestionType,
             text: questionText,
@@ -98,7 +98,7 @@ Call get_next_answer(session_id="${browserSession.session_id}", block=true) to c
       session_id: tool.schema.string().describe("Brainstorm session ID"),
     },
     execute: async (args) => {
-      const state = await stateManager.getSession(args.session_id);
+      const state = await stateStore.getSession(args.session_id);
       if (!state) return `Error: Session not found: ${args.session_id}`;
 
       const branchSummaries = state.branch_order
@@ -127,7 +127,7 @@ ${branchSummaries}`;
       session_id: tool.schema.string().describe("Brainstorm session ID"),
     },
     execute: async (args) => {
-      const state = await stateManager.getSession(args.session_id);
+      const state = await stateStore.getSession(args.session_id);
       if (!state) return `Error: Session not found: ${args.session_id}`;
 
       // End browser session
@@ -144,7 +144,7 @@ ${branchSummaries}`;
         .join("\n");
 
       // Clean up state file
-      await stateManager.deleteSession(args.session_id);
+      await stateStore.deleteSession(args.session_id);
 
       return `## Brainstorm Complete
 
@@ -173,7 +173,7 @@ This is the recommended way to run a brainstorm - just create_brainstorm then aw
 
       // Helper to check completion from fresh state
       async function isComplete(): Promise<boolean> {
-        const state = await stateManager.getSession(args.session_id);
+        const state = await stateStore.getSession(args.session_id);
         if (!state) return true; // Session gone = done
         return Object.values(state.branches).every((b) => b.status === "done");
       }
@@ -225,7 +225,7 @@ This is the recommended way to run a brainstorm - just create_brainstorm then aw
       await Promise.all(pendingProcessing);
 
       // Final completion check with fresh state
-      const finalState = await stateManager.getSession(args.session_id);
+      const finalState = await stateStore.getSession(args.session_id);
       if (!finalState) {
         return `Error: Session lost`;
       }
@@ -358,7 +358,7 @@ ${approved ? "Design approved. Write the design document to docs/plans/." : "Cha
     answer: unknown,
   ): Promise<void> {
     // Get FRESH state (not stale)
-    const state = await stateManager.getSession(sessionId);
+    const state = await stateStore.getSession(sessionId);
     if (!state) {
       return;
     }
@@ -383,7 +383,7 @@ ${approved ? "Design approved. Write the design document to docs/plans/." : "Cha
 
     // Record the answer
     try {
-      await stateManager.recordAnswer(sessionId, questionId, answer);
+      await stateStore.recordAnswer(sessionId, questionId, answer);
     } catch (error) {
       console.error(`[octto] Failed to record answer for ${questionId}:`, error);
       // Don't silently lose the answer - rethrow so caller knows processing failed
@@ -391,7 +391,7 @@ ${approved ? "Design approved. Write the design document to docs/plans/." : "Cha
     }
 
     // Get FRESH state after recording answer
-    const updatedState = await stateManager.getSession(sessionId);
+    const updatedState = await stateStore.getSession(sessionId);
     if (!updatedState) return;
 
     const branch = updatedState.branches[branchId];
@@ -404,7 +404,7 @@ ${approved ? "Design approved. Write the design document to docs/plans/." : "Cha
 
     if (probeResult.done) {
       // Complete the branch
-      await stateManager.completeBranch(sessionId, branchId, probeResult.finding || "No finding");
+      await stateStore.completeBranch(sessionId, branchId, probeResult.finding || "No finding");
     } else if (probeResult.question) {
       // Push follow-up question with branch scope as context
       const questionText =
@@ -424,7 +424,7 @@ ${approved ? "Design approved. Write the design document to docs/plans/." : "Cha
         configWithContext as QuestionConfig,
       );
 
-      await stateManager.addQuestionToBranch(sessionId, branchId, {
+      await stateStore.addQuestionToBranch(sessionId, branchId, {
         id: newQuestionId,
         type: probeResult.question.type as QuestionType,
         text: questionText,

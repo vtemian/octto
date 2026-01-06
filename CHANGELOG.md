@@ -19,5 +19,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 - Input validation for all question configs (empty options, bounds checking)
-- Whitelisted agent config overrides (only model, temperature, maxTokens)
+- Whitelisted agent config overrides (only model, temperature, maxSteps)
 - Session ID path traversal protection

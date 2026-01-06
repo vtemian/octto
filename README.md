@@ -37,7 +37,7 @@ Optionally configure agent settings in `~/.config/opencode/octto.json`:
 |----------|------|-------------|
 | `model` | string | Model identifier (e.g., `anthropic/claude-opus-4`, `anthropic/claude-sonnet-4`) |
 | `temperature` | number | Sampling temperature (0-1) |
-| `maxTokens` | number | Maximum response tokens |
+| `maxSteps` | number | Maximum agent steps |
 
 Only these safe properties can be overridden. Missing config file is fine - defaults are used.
 
@@ -140,11 +140,11 @@ src/
 │   ├── octto.ts          # Orchestrator prompt
 │   └── bootstrapper.ts   # Branch creation prompt
 ├── state/
-│   ├── manager.ts        # Branch state CRUD
+│   ├── store.ts          # Branch state CRUD
 │   ├── persistence.ts    # JSON file storage
 │   └── types.ts          # BrainstormState, Branch
 ├── session/
-│   ├── manager.ts        # Browser session, WebSocket
+│   ├── sessions.ts       # Browser session, WebSocket
 │   ├── server.ts         # HTTP/WS server (Bun.serve)
 │   ├── waiter.ts         # Async answer waiters
 │   └── types.ts          # Question, Session types

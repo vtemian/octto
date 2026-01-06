@@ -96,7 +96,17 @@ export function createSessionStore(options: SessionStoreOptions = {}): SessionSt
       }
 
       if (!options.skipBrowser) {
-        await openBrowser(url);
+        try {
+          await openBrowser(url);
+        } catch (error) {
+          // Clean up on browser open failure
+          sessions.delete(sessionId);
+          for (const qId of questionIds) {
+            questionToSession.delete(qId);
+          }
+          server.stop();
+          throw error;
+        }
       }
 
       return {

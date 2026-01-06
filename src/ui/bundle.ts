@@ -397,16 +397,10 @@ export function getHtmlBundle(): string {
       margin-top: 1rem;
     }
 
-    .branch-badge {
-      display: inline-block;
-      font-size: 0.6875rem;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--foreground-muted);
-      background: var(--surface-elevated);
-      border: 1px solid var(--border-subtle);
-      padding: 0.25rem 0.5rem;
-      margin-bottom: 0.75rem;
+    .branch-subtitle {
+      font-size: 0.75rem;
+      color: var(--foreground-subtle);
+      margin-bottom: 0.25rem;
     }
 
     .thinking {
@@ -791,8 +785,10 @@ export function getHtmlBundle(): string {
         html += '<div class="card card-answered' + (isExpanded ? ' expanded' : '') + '" data-qid="' + q.id + '">';
         html += '<div class="card-answered-header" onclick="toggleAnswered(\\'' + q.id + '\\')">';
         html += '<span class="check">[OK]</span>';
-        if (branchName) html += '<span class="branch-badge" style="margin-right: 0.5rem; margin-bottom: 0;">' + escapeHtml(branchName) + '</span>';
+        html += '<div style="flex: 1;">';
+        if (branchName) html += '<div class="branch-subtitle" style="margin-bottom: 0;">' + escapeHtml(branchName) + '</div>';
         html += '<span>' + escapeHtml(q.config.question) + '</span>';
+        html += '</div>';
         html += '<span class="toggle">' + (isExpanded ? '▲ collapse' : '▼ view') + '</span>';
         html += '</div>';
         if (isExpanded) {
@@ -838,7 +834,7 @@ export function getHtmlBundle(): string {
       }
 
       if (branchName) {
-        html += '<div class="branch-badge">' + escapeHtml(branchName) + '</div>';
+        html += '<div class="branch-subtitle">' + escapeHtml(branchName) + '</div>';
       }
       html += '<div class="question-text">' + escapeHtml(config.question) + '</div>';
       if (remainingContext) {

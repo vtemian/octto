@@ -1,32 +1,35 @@
 # octto
 
-OpenCode plugin that turns rough ideas into designs through parallel branch exploration with an interactive browser UI.
+An interactive browser UI for AI brainstorming. Stop typing in terminals. Start clicking in browsers.
 
 ## The Problem
 
-Traditional AI brainstorming is **slow and tedious**:
-- Agent asks question → you wait → type answer → agent thinks → asks next question
-- Sequential, one at a time
-- 10+ minutes of back-and-forth
+AI brainstorming today happens in the terminal:
+```
+Agent: What framework do you want?
+You: *types* React
+Agent: *thinks for 10 seconds*
+Agent: What about styling?
+You: *types* Tailwind
+Agent: *thinks*
+...repeat for 10 minutes...
+```
+
+Slow. Tedious. One question at a time.
 
 ## The Solution
 
-Octto flips the model: **parallel exploration with an interactive browser UI**.
+**A browser window with visual questions you can answer in seconds.**
 
-```
-         ┌─ Branch 1: Q1 → Answer → Q2 → Finding
-Request ─┼─ Branch 2: Q1 → Answer → Finding
-         └─ Branch 3: Q1 → Answer → Q2 → Q3 → Finding
-                    ↑
-           All visible at once in browser
-```
+When you describe your idea, octto opens an interactive UI:
 
-**What changes:**
-- All questions visible immediately in a browser window
-- Answer in any order, at your pace
-- Probe agents evaluate branches in parallel (async)
-- Each branch gets exactly the depth it needs
-- **2-3 minutes** instead of 10+
+- Click options instead of typing
+- See all questions at once
+- Answer in any order
+- Watch follow-ups appear instantly
+- Review the final plan visually
+
+**10 minutes of terminal typing → 2 minutes of clicking.**
 
 ## Quick Start
 
@@ -36,97 +39,85 @@ Add to `~/.config/opencode/opencode.json`:
 { "plugin": ["/path/to/octto"] }
 ```
 
-Select the **octto** agent, then describe your idea:
+Select the **octto** agent:
 
 ```
 I want to add a caching layer to the API
 ```
 
-A browser window opens. Answer the questions. Get a design document.
+A browser window opens. Click your answers. Done.
 
-## The Interactive Browser UI
+## The Interactive UI
 
-This is the key innovation. Instead of terminal back-and-forth:
+### Rich Question Types
 
-- **Visual question cards** with rich input types (dropdowns, sliders, code editors)
-- **Live queue** showing remaining questions and completed answers
-- **Parallel answering** - see all branches, answer in any order
-- **Instant feedback** - new follow-up questions appear as you answer
-- **Final review** - approve the consolidated plan before saving
+No more typing everything. Pick from 14 visual input types:
 
-### 14 Question Types
-
-| Type | Use Case |
-|------|----------|
-| `pick_one` | Single choice with options |
-| `pick_many` | Multiple selection |
-| `confirm` | Yes/No decisions |
-| `ask_text` | Free-form text |
-| `slider` | Numeric range |
-| `rank` | Order items by priority |
-| `rate` | Score items (stars) |
-| `thumbs` | Quick up/down feedback |
-| `show_options` | Options with pros/cons |
-| `show_diff` | Code diff review |
-| `ask_code` | Code input with syntax highlighting |
+| Type | What You See |
+|------|--------------|
+| `pick_one` | Radio buttons |
+| `pick_many` | Checkboxes |
+| `confirm` | Yes/No buttons |
+| `slider` | Draggable range |
+| `rank` | Drag to reorder |
+| `rate` | Star rating |
+| `thumbs` | Thumbs up/down |
+| `show_options` | Cards with pros/cons |
+| `show_diff` | Side-by-side code diff |
+| `ask_code` | Syntax-highlighted editor |
+| `ask_text` | Text input (when needed) |
 | `ask_image` | Image upload |
 | `ask_file` | File upload |
-| `emoji_react` | Emoji selection |
+| `emoji_react` | Emoji picker |
 
-## How It Works
+### Live Updates
 
-### 3 Specialized Agents
+- Questions appear as you answer previous ones
+- Progress indicator shows remaining questions
+- Completed answers visible for context
+- Final plan rendered as reviewable sections
 
-| Agent | Role |
-|-------|------|
-| **octto** | Orchestrator - runs the session |
-| **bootstrapper** | Analyzes request, creates 2-4 exploration branches |
-| **probe** | Evaluates each branch, decides depth adaptively |
+### Parallel Branches
+
+Your request is split into 2-4 exploration branches. All initial questions appear at once:
+
+```
+         ┌─ Branch 1: [question card]
+Request ─┼─ Branch 2: [question card]
+         └─ Branch 3: [question card]
+                ↓
+        Answer any, in any order
+```
+
+Each branch goes as deep as needed. Some finish in 2 questions, others take 4.
+
+## How It Works Behind the Scenes
+
+### 3 Agents
+
+| Agent | Job |
+|-------|-----|
+| **bootstrapper** | Splits your request into branches |
+| **probe** | Decides if a branch needs more questions |
+| **octto** | Orchestrates the session |
 
 ### The Flow
 
-1. **Decomposition**: Bootstrapper analyzes your request, creates 2-4 branches. Each explores ONE aspect (e.g., "security", "data format", "dependencies").
-
-2. **Initial Questions**: Each branch gets an initial question. All appear in the browser simultaneously.
-
-3. **Parallel Answering**: Answer at your own pace, any order. No blocking.
-
-4. **Adaptive Depth**: When you answer, a probe agent evaluates:
-   - Need more info? → Generates follow-up question
-   - Understood? → Synthesizes finding, completes branch
-
-5. **Intelligent Completion**: Each branch continues until the probe feels confident. Some need 2 questions, others 4.
-
-6. **Final Review**: All findings consolidated into a plan. Approve or request changes.
-
-7. **Output**: Design saved to `docs/plans/YYYY-MM-DD-{topic}-design.md`
-
-## Architecture
-
-### Dual Session System
-
-| Session | Purpose | Storage |
-|---------|---------|---------|
-| **State Session** | Branch state, Q&A history, findings | `.octto/{id}.json` |
-| **Browser Session** | WebSocket, pending questions, live UI | In-memory |
-
-### Tools
-
-| Tool | Description |
-|------|-------------|
-| `create_brainstorm` | Create session with branches, open browser |
-| `await_brainstorm_complete` | Process answers until all branches done |
-| `end_brainstorm` | Close session, return findings |
+1. Bootstrapper creates 2-4 branches from your request
+2. Each branch gets an initial question → all shown in browser
+3. You answer (click, not type)
+4. Probe agent evaluates: more questions or done?
+5. Repeat until all branches complete
+6. Final plan shown for approval
+7. Design saved to `docs/plans/`
 
 ## Configuration
 
-Optionally configure in `~/.config/opencode/octto.json`:
+Optional `~/.config/opencode/octto.json`:
 
 ```json
 {
   "agents": {
-    "octto": { "model": "anthropic/claude-opus-4" },
-    "bootstrapper": { "model": "anthropic/claude-sonnet-4" },
     "probe": { "model": "anthropic/claude-sonnet-4" }
   }
 }
@@ -139,16 +130,6 @@ bun install
 bun run build
 bun test
 ```
-
-## Why Branches?
-
-| Sequential (old) | Parallel (octto) |
-|------------------|------------------|
-| One question at a time | All questions visible at once |
-| Wait for agent between each | Async processing, no waiting |
-| Fixed depth | Adaptive depth per branch |
-| 10+ minutes | 2-3 minutes |
-| Terminal typing | Visual browser UI |
 
 ## License
 

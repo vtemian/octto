@@ -48,16 +48,11 @@ function formatBranchContext(state: BrainstormState, branchId: string): string {
 }
 
 async function runProbeAgent(client: OpencodeClient, state: BrainstormState, branchId: string): Promise<ProbeResult> {
-  console.log(`[octto] Probe starting for branch "${branchId}"`);
-
   const sessionResult = await client.session.create({
-    body: {
-      title: `probe-${branchId}`,
-    },
+    body: { title: `probe-${branchId}` },
   });
 
   if (!sessionResult.data) {
-    console.error("[octto] Probe failed to create session");
     throw new Error("Failed to create probe session");
   }
 
@@ -68,17 +63,15 @@ async function runProbeAgent(client: OpencodeClient, state: BrainstormState, bra
       path: { id: probeSessionId },
       body: {
         agent: AGENTS.probe,
-        tools: {}, // Disable all tools
+        tools: {},
         parts: [{ type: "text", text: formatBranchContext(state, branchId) }],
       },
     });
 
     if (!promptResult.data) {
-      console.error("[octto] Probe failed to get response");
       throw new Error("Failed to get probe response");
     }
 
-    // Extract text from response parts
     let responseText = "";
     for (const part of promptResult.data.parts) {
       if (part.type === "text" && "text" in part) {
@@ -86,18 +79,12 @@ async function runProbeAgent(client: OpencodeClient, state: BrainstormState, bra
       }
     }
 
-    console.log(`[octto] Probe raw response:\n${responseText}`);
-
-    // Parse JSON from response
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      console.error("[octto] Probe response not valid JSON");
       return { done: true, finding: "Could not parse probe response" };
     }
 
-    const result = JSON.parse(jsonMatch[0]) as ProbeResult;
-    console.log(`[octto] Probe result:`, JSON.stringify(result, null, 2));
-    return result;
+    return JSON.parse(jsonMatch[0]) as ProbeResult;
   } finally {
     await client.session.delete({ path: { id: probeSessionId } }).catch(() => {});
   }
@@ -146,13 +133,11 @@ export async function processAnswer(
   const result = await runProbeAgent(client, updatedState, branchId);
 
   if (result.done) {
-    console.log(`[octto] Branch "${branchId}" completed with finding: ${result.finding}`);
     await stateStore.completeBranch(sessionId, branchId, result.finding || "No finding");
     return;
   }
 
   if (result.question) {
-    console.log(`[octto] Branch "${branchId}" needs follow-up: ${result.question.type}`);
     const config = result.question.config as { question?: string; context?: string };
     const questionText = config.question ?? "Follow-up question";
     const existingContext = config.context ?? "";
@@ -166,7 +151,6 @@ export async function processAnswer(
       result.question.type,
       configWithContext,
     );
-    console.log(`[octto] Pushed follow-up question ${newQuestionId} to browser`);
 
     await stateStore.addQuestionToBranch(sessionId, branchId, {
       id: newQuestionId,
@@ -174,8 +158,5 @@ export async function processAnswer(
       text: questionText,
       config: configWithContext,
     });
-    console.log(`[octto] Added follow-up question to branch state`);
-  } else {
-    console.log(`[octto] Probe returned done=false but no question`);
   }
 }

@@ -2,7 +2,7 @@
 
 import { tool } from "@opencode-ai/plugin/tool";
 
-import type { QuestionConfig, QuestionType, SessionStore } from "@/session";
+import type { BaseConfig, QuestionType, SessionStore } from "@/session";
 
 import type { OcttoTool, OcttoTools } from "./types";
 
@@ -13,7 +13,7 @@ interface QuestionToolConfig<T> {
   description: string;
   args: ArgsSchema;
   validate?: (args: T) => string | null;
-  toConfig: (args: T) => QuestionConfig;
+  toConfig: (args: T) => BaseConfig;
 }
 
 export function createQuestionToolFactory(sessions: SessionStore) {
@@ -31,7 +31,7 @@ Returns immediately with question_id. Use get_answer to retrieve response.`,
 
         try {
           const questionConfig = config.toConfig(args as unknown as T);
-          const result = sessions.pushQuestion(args.session_id as string, config.type, questionConfig);
+          const result = sessions.pushQuestion(args.session_id, config.type, questionConfig);
           return `Question pushed: ${result.question_id}\nUse get_answer("${result.question_id}") to retrieve response.`;
         } catch (error) {
           return `Failed: ${error instanceof Error ? error.message : String(error)}`;
@@ -61,15 +61,16 @@ The question will appear in the browser for the user to answer.`,
           "rate",
         ])
         .describe("Question type"),
-      config: tool.schema.looseObject({}).describe("Question configuration (varies by type)"),
+      config: tool.schema
+        .looseObject({
+          question: tool.schema.string().optional(),
+          context: tool.schema.string().optional(),
+        })
+        .describe("Question configuration (varies by type)"),
     },
     execute: async (args) => {
       try {
-        const result = sessions.pushQuestion(
-          args.session_id,
-          args.type as QuestionType,
-          args.config as unknown as QuestionConfig,
-        );
+        const result = sessions.pushQuestion(args.session_id, args.type, args.config);
         return `Question pushed: ${result.question_id}
 Type: ${args.type}
 Use get_next_answer(session_id, block=true) to wait for the user's response.`;

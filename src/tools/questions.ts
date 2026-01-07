@@ -2,8 +2,8 @@
 import { tool } from "@opencode-ai/plugin/tool";
 
 import type { SessionStore } from "@/session";
+import type { ConfirmConfig, PickManyConfig, PickOneConfig, RankConfig, RateConfig } from "@/types";
 
-import type { ConfirmConfig, PickManyConfig, PickOneConfig, RankConfig, RateConfig } from "../types";
 import { createQuestionToolFactory } from "./factory";
 import type { OcttoTools } from "./types";
 

@@ -1,7 +1,7 @@
 // src/tools/responses.ts
 import { tool } from "@opencode-ai/plugin/tool";
 
-import type { SessionStore } from "@/session";
+import { type SessionStore, STATUSES } from "@/session";
 
 import type { OcttoTools } from "./types";
 
@@ -42,7 +42,7 @@ ${JSON.stringify(result.response, null, 2)}
 **Status:** ${result.status}
 **Reason:** ${result.reason}
 
-${result.status === "pending" ? "User has not answered yet. Call again with block=true to wait." : ""}`;
+${result.status === STATUSES.PENDING ? "User has not answered yet. Call again with block=true to wait." : ""}`;
     },
   });
 
@@ -78,7 +78,7 @@ ${JSON.stringify(result.response, null, 2)}
 \`\`\``;
       }
 
-      if (result.status === "none_pending") {
+      if (result.status === STATUSES.NONE_PENDING) {
         return `## No Pending Questions
 
 All questions have been answered or there are no questions in the queue.
@@ -88,7 +88,7 @@ Push more questions or end the session.`;
       return `## Waiting for Answer
 
 **Status:** ${result.status}
-${result.reason === "timeout" ? "Timed out waiting for response." : "No answer yet."}`;
+${result.reason === STATUSES.TIMEOUT ? "Timed out waiting for response." : "No answer yet."}`;
     },
   });
 

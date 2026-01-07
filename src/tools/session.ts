@@ -1,7 +1,7 @@
 // src/tools/session.ts
 import { tool } from "@opencode-ai/plugin/tool";
 
-import type { QuestionConfig, QuestionType, SessionStore } from "@/session";
+import type { SessionStore } from "@/session";
 
 import type { OcttoTools } from "./types";
 
@@ -27,7 +27,12 @@ REQUIRED: You MUST provide at least 1 question. Will fail without questions.`,
                 "slider",
               ])
               .describe("Question type"),
-            config: tool.schema.looseObject({}).describe("Question config (varies by type)"),
+            config: tool.schema
+              .looseObject({
+                question: tool.schema.string().optional(),
+                context: tool.schema.string().optional(),
+              })
+              .describe("Question config (varies by type)"),
           }),
         )
         .describe("REQUIRED: Initial questions to display when browser opens. Must have at least 1."),
@@ -54,11 +59,7 @@ Please call start_session again WITH your prepared questions.`;
       }
 
       try {
-        const questions = args.questions.map((q) => ({
-          type: q.type as QuestionType,
-          config: q.config as unknown as QuestionConfig,
-        }));
-        const result = await sessions.startSession({ title: args.title, questions });
+        const result = await sessions.startSession({ title: args.title, questions: args.questions });
 
         let output = `## Session Started
 

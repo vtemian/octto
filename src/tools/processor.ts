@@ -1,6 +1,6 @@
 // src/tools/processor.ts
 
-import type { QuestionConfig, QuestionType, SessionStore } from "@/session";
+import type { Answer, SessionStore } from "@/session";
 import type { StateStore } from "@/state";
 
 import { evaluateBranch } from "./probe-logic";
@@ -11,7 +11,7 @@ export async function processAnswer(
   sessionId: string,
   browserSessionId: string,
   questionId: string,
-  answer: unknown,
+  answer: Answer,
 ): Promise<void> {
   const state = await stateStore.getSession(sessionId);
   if (!state) return;
@@ -52,28 +52,25 @@ export async function processAnswer(
   }
 
   if (result.question) {
-    const questionText =
-      typeof result.question.config === "object" && "question" in result.question.config
-        ? String((result.question.config as { question: string }).question)
-        : "Follow-up question";
-
-    const originalConfig = result.question.config as unknown as Record<string, unknown>;
+    const config = result.question.config;
+    const questionText = "question" in config ? (config.question ?? "Follow-up question") : "Follow-up question";
+    const existingContext = "context" in config ? (config.context ?? "") : "";
     const configWithContext = {
-      ...originalConfig,
-      context: `[${branch.scope}] ${originalConfig.context || ""}`.trim(),
+      ...config,
+      context: `[${branch.scope}] ${existingContext}`.trim(),
     };
 
     const { question_id: newQuestionId } = sessions.pushQuestion(
       browserSessionId,
-      result.question.type as QuestionType,
-      configWithContext as QuestionConfig,
+      result.question.type,
+      configWithContext,
     );
 
     await stateStore.addQuestionToBranch(sessionId, branchId, {
       id: newQuestionId,
-      type: result.question.type as QuestionType,
+      type: result.question.type,
       text: questionText,
-      config: configWithContext as QuestionConfig,
+      config: configWithContext,
     });
   }
 }

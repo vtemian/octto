@@ -1,35 +1,28 @@
 import type { ServerWebSocket } from "bun";
 
 import { DEFAULT_ANSWER_TIMEOUT_MS } from "../constants";
+import { generateId } from "../tools/utils";
 import { openBrowser } from "./browser";
 import { createServer } from "./server";
-import type {
-  EndSessionOutput,
-  GetAnswerInput,
-  GetAnswerOutput,
-  GetNextAnswerInput,
-  GetNextAnswerOutput,
-  ListQuestionsOutput,
-  PushQuestionOutput,
-  Question,
-  QuestionConfig,
-  QuestionType,
-  Session,
-  StartSessionInput,
-  StartSessionOutput,
-  WsClientMessage,
-  WsServerMessage,
+import {
+  type BaseConfig,
+  type EndSessionOutput,
+  type GetAnswerInput,
+  type GetAnswerOutput,
+  type GetNextAnswerInput,
+  type GetNextAnswerOutput,
+  type ListQuestionsOutput,
+  type PushQuestionOutput,
+  type Question,
+  type QuestionType,
+  type Session,
+  STATUSES,
+  type StartSessionInput,
+  type StartSessionOutput,
+  type WsClientMessage,
+  type WsServerMessage,
 } from "./types";
 import { createWaiters } from "./waiter";
-
-function generateId(prefix: string): string {
-  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-  let result = `${prefix}_`;
-  for (let i = 0; i < 8; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
-}
 
 export interface SessionStoreOptions {
   /** Skip opening browser - useful for tests */
@@ -39,7 +32,7 @@ export interface SessionStoreOptions {
 export interface SessionStore {
   startSession: (input: StartSessionInput) => Promise<StartSessionOutput>;
   endSession: (sessionId: string) => Promise<EndSessionOutput>;
-  pushQuestion: (sessionId: string, type: QuestionType, config: QuestionConfig) => PushQuestionOutput;
+  pushQuestion: (sessionId: string, type: QuestionType, config: BaseConfig) => PushQuestionOutput;
   getAnswer: (input: GetAnswerInput) => Promise<GetAnswerOutput>;
   getNextAnswer: (input: GetNextAnswerInput) => Promise<GetNextAnswerOutput>;
   cancelQuestion: (questionId: string) => { ok: boolean };
@@ -86,7 +79,7 @@ export function createSessionStore(options: SessionStoreOptions = {}): SessionSt
             sessionId,
             type: q.type,
             config: q.config,
-            status: "pending",
+            status: STATUSES.PENDING,
             createdAt: new Date(),
           };
           session.questions.set(questionId, question);
@@ -140,7 +133,7 @@ export function createSessionStore(options: SessionStoreOptions = {}): SessionSt
       return { ok: true };
     },
 
-    pushQuestion(sessionId: string, type: QuestionType, config: QuestionConfig): PushQuestionOutput {
+    pushQuestion(sessionId: string, type: QuestionType, config: BaseConfig): PushQuestionOutput {
       const session = sessions.get(sessionId);
       if (!session) {
         throw new Error(`Session not found: ${sessionId}`);
@@ -153,7 +146,7 @@ export function createSessionStore(options: SessionStoreOptions = {}): SessionSt
         sessionId,
         type,
         config,
-        status: "pending",
+        status: STATUSES.PENDING,
         createdAt: new Date(),
       };
 
@@ -178,29 +171,29 @@ export function createSessionStore(options: SessionStoreOptions = {}): SessionSt
     async getAnswer(input: GetAnswerInput): Promise<GetAnswerOutput> {
       const sessionId = questionToSession.get(input.question_id);
       if (!sessionId) {
-        return { completed: false, status: "cancelled", reason: "cancelled" };
+        return { completed: false, status: STATUSES.CANCELLED, reason: STATUSES.CANCELLED };
       }
 
       const session = sessions.get(sessionId);
       if (!session) {
-        return { completed: false, status: "cancelled", reason: "cancelled" };
+        return { completed: false, status: STATUSES.CANCELLED, reason: STATUSES.CANCELLED };
       }
 
       const question = session.questions.get(input.question_id);
       if (!question) {
-        return { completed: false, status: "cancelled", reason: "cancelled" };
+        return { completed: false, status: STATUSES.CANCELLED, reason: STATUSES.CANCELLED };
       }
 
-      if (question.status === "answered") {
-        return { completed: true, status: "answered", response: question.response };
+      if (question.status === STATUSES.ANSWERED) {
+        return { completed: true, status: STATUSES.ANSWERED, response: question.response };
       }
 
-      if (question.status === "cancelled" || question.status === "timeout") {
+      if (question.status === STATUSES.CANCELLED || question.status === STATUSES.TIMEOUT) {
         return { completed: false, status: question.status, reason: question.status };
       }
 
       if (!input.block) {
-        return { completed: false, status: "pending", reason: "pending" };
+        return { completed: false, status: STATUSES.PENDING, reason: STATUSES.PENDING };
       }
 
       const timeout = input.timeout ?? DEFAULT_ANSWER_TIMEOUT_MS;
@@ -211,16 +204,16 @@ export function createSessionStore(options: SessionStoreOptions = {}): SessionSt
         const cleanup = responseWaiters.register(input.question_id, (response) => {
           if (timeoutId) clearTimeout(timeoutId);
           if (response && typeof response === "object" && "cancelled" in response) {
-            resolve({ completed: false, status: "cancelled", reason: "cancelled" });
+            resolve({ completed: false, status: STATUSES.CANCELLED, reason: STATUSES.CANCELLED });
           } else {
-            resolve({ completed: true, status: "answered", response });
+            resolve({ completed: true, status: STATUSES.ANSWERED, response });
           }
         });
 
         timeoutId = setTimeout(() => {
           cleanup();
-          question.status = "timeout";
-          resolve({ completed: false, status: "timeout", reason: "timeout" });
+          question.status = STATUSES.TIMEOUT;
+          resolve({ completed: false, status: STATUSES.TIMEOUT, reason: STATUSES.TIMEOUT });
         }, timeout);
       });
     },
@@ -228,30 +221,30 @@ export function createSessionStore(options: SessionStoreOptions = {}): SessionSt
     async getNextAnswer(input: GetNextAnswerInput): Promise<GetNextAnswerOutput> {
       const session = sessions.get(input.session_id);
       if (!session) {
-        return { completed: false, status: "none_pending", reason: "none_pending" };
+        return { completed: false, status: STATUSES.NONE_PENDING, reason: STATUSES.NONE_PENDING };
       }
 
       for (const question of session.questions.values()) {
-        if (question.status === "answered" && !question.retrieved) {
+        if (question.status === STATUSES.ANSWERED && !question.retrieved) {
           question.retrieved = true;
           return {
             completed: true,
             question_id: question.id,
             question_type: question.type,
-            status: "answered",
+            status: STATUSES.ANSWERED,
             response: question.response,
           };
         }
       }
 
-      const hasPending = Array.from(session.questions.values()).some((q) => q.status === "pending");
+      const hasPending = Array.from(session.questions.values()).some((q) => q.status === STATUSES.PENDING);
 
       if (!hasPending) {
-        return { completed: false, status: "none_pending", reason: "none_pending" };
+        return { completed: false, status: STATUSES.NONE_PENDING, reason: STATUSES.NONE_PENDING };
       }
 
       if (!input.block) {
-        return { completed: false, status: "pending" };
+        return { completed: false, status: STATUSES.PENDING };
       }
 
       const timeout = input.timeout ?? DEFAULT_ANSWER_TIMEOUT_MS;
@@ -267,14 +260,14 @@ export function createSessionStore(options: SessionStoreOptions = {}): SessionSt
             completed: true,
             question_id: questionId,
             question_type: question?.type,
-            status: "answered",
+            status: STATUSES.ANSWERED,
             response,
           });
         });
 
         timeoutId = setTimeout(() => {
           cleanup();
-          resolve({ completed: false, status: "timeout", reason: "timeout" });
+          resolve({ completed: false, status: STATUSES.TIMEOUT, reason: STATUSES.TIMEOUT });
         }, timeout);
       });
     },
@@ -291,11 +284,11 @@ export function createSessionStore(options: SessionStoreOptions = {}): SessionSt
       }
 
       const question = session.questions.get(questionId);
-      if (!question || question.status !== "pending") {
+      if (!question || question.status !== STATUSES.PENDING) {
         return { ok: false };
       }
 
-      question.status = "cancelled";
+      question.status = STATUSES.CANCELLED;
 
       if (session.wsClient) {
         const msg: WsServerMessage = { type: "cancel", id: questionId };
@@ -338,7 +331,7 @@ export function createSessionStore(options: SessionStoreOptions = {}): SessionSt
       session.wsClient = ws;
 
       for (const question of session.questions.values()) {
-        if (question.status === "pending") {
+        if (question.status === STATUSES.PENDING) {
           const msg: WsServerMessage = {
             type: "question",
             id: question.id,
@@ -368,9 +361,9 @@ export function createSessionStore(options: SessionStoreOptions = {}): SessionSt
         if (!session) return;
 
         const question = session.questions.get(message.id);
-        if (!question || question.status !== "pending") return;
+        if (!question || question.status !== STATUSES.PENDING) return;
 
-        question.status = "answered";
+        question.status = STATUSES.ANSWERED;
         question.answeredAt = new Date();
         question.response = message.answer;
 

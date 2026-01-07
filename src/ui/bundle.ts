@@ -771,10 +771,27 @@ export function getHtmlBundle(): string {
       
       const pending = questions.filter(q => !q.answered);
       const answered = questions.filter(q => q.answered);
-      
+
       let html = '';
-      
-      // Show answered questions (collapsed or expanded)
+
+      // Show remaining count at top
+      if (pending.length > 1) {
+        html += '<div class="queue-indicator" style="margin-top: 0; margin-bottom: 1rem;">' + (pending.length - 1) + ' more question(s) remaining</div>';
+      }
+
+      // Show current question
+      if (pending.length > 0) {
+        const q = pending[0];
+        html += renderQuestion(q);
+      } else if (answered.length > 0) {
+        // All answered, waiting for more questions
+        html += '<div class="thinking">';
+        html += '<div class="thinking-text">Thinking...</div>';
+        html += '<div class="spinner"></div>';
+        html += '</div>';
+      }
+
+      // Show answered questions at bottom (collapsed or expanded)
       for (const q of answered) {
         const isExpanded = expandedAnswers.has(q.id);
         // Extract branch name from context
@@ -797,23 +814,6 @@ export function getHtmlBundle(): string {
           html += renderAnsweredQuestion(q);
           html += '</div>';
         }
-        html += '</div>';
-      }
-      
-      // Show current question
-      if (pending.length > 0) {
-        const q = pending[0];
-        html += renderQuestion(q);
-        
-        // Show queue indicator
-        if (pending.length > 1) {
-          html += '<div class="queue-indicator">' + (pending.length - 1) + ' more question(s) in queue</div>';
-        }
-      } else if (answered.length > 0) {
-        // All answered, waiting for more questions
-        html += '<div class="thinking">';
-        html += '<div class="thinking-text">Thinking...</div>';
-        html += '<div class="spinner"></div>';
         html += '</div>';
       }
       

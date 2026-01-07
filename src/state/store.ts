@@ -25,6 +25,23 @@ export interface StateStore {
 export function createStateStore(baseDir = ".octto"): StateStore {
   const persistence = createStatePersistence(baseDir);
 
+  // Operation queue per session to prevent concurrent read-modify-write races
+  const operationQueues = new Map<string, Promise<void>>();
+
+  // Serialize operations for a given session
+  function withSessionLock<T>(sessionId: string, operation: () => Promise<T>): Promise<T> {
+    const currentQueue = operationQueues.get(sessionId) ?? Promise.resolve();
+    const newOperation = currentQueue.then(operation, operation); // Run even if previous failed
+    operationQueues.set(
+      sessionId,
+      newOperation.then(
+        () => {},
+        () => {},
+      ),
+    ); // Ignore result for queue
+    return newOperation;
+  }
+
   return {
     async createSession(
       sessionId: string,
@@ -64,46 +81,54 @@ export function createStateStore(baseDir = ".octto"): StateStore {
     },
 
     async setBrowserSessionId(sessionId: string, browserSessionId: string): Promise<void> {
-      const state = await persistence.load(sessionId);
-      if (!state) throw new Error(`Session not found: ${sessionId}`);
-      state.browser_session_id = browserSessionId;
-      await persistence.save(state);
+      return withSessionLock(sessionId, async () => {
+        const state = await persistence.load(sessionId);
+        if (!state) throw new Error(`Session not found: ${sessionId}`);
+        state.browser_session_id = browserSessionId;
+        await persistence.save(state);
+      });
     },
 
     async addQuestionToBranch(sessionId: string, branchId: string, question: BranchQuestion): Promise<BranchQuestion> {
-      const state = await persistence.load(sessionId);
-      if (!state) throw new Error(`Session not found: ${sessionId}`);
-      if (!state.branches[branchId]) throw new Error(`Branch not found: ${branchId}`);
+      return withSessionLock(sessionId, async () => {
+        const state = await persistence.load(sessionId);
+        if (!state) throw new Error(`Session not found: ${sessionId}`);
+        if (!state.branches[branchId]) throw new Error(`Branch not found: ${branchId}`);
 
-      state.branches[branchId].questions.push(question);
-      await persistence.save(state);
-      return question;
+        state.branches[branchId].questions.push(question);
+        await persistence.save(state);
+        return question;
+      });
     },
 
     async recordAnswer(sessionId: string, questionId: string, answer: Answer): Promise<void> {
-      const state = await persistence.load(sessionId);
-      if (!state) throw new Error(`Session not found: ${sessionId}`);
+      return withSessionLock(sessionId, async () => {
+        const state = await persistence.load(sessionId);
+        if (!state) throw new Error(`Session not found: ${sessionId}`);
 
-      for (const branch of Object.values(state.branches)) {
-        const question = branch.questions.find((q) => q.id === questionId);
-        if (question) {
-          question.answer = answer;
-          question.answeredAt = Date.now();
-          await persistence.save(state);
-          return;
+        for (const branch of Object.values(state.branches)) {
+          const question = branch.questions.find((q) => q.id === questionId);
+          if (question) {
+            question.answer = answer;
+            question.answeredAt = Date.now();
+            await persistence.save(state);
+            return;
+          }
         }
-      }
-      throw new Error(`Question not found: ${questionId}`);
+        throw new Error(`Question not found: ${questionId}`);
+      });
     },
 
     async completeBranch(sessionId: string, branchId: string, finding: string): Promise<void> {
-      const state = await persistence.load(sessionId);
-      if (!state) throw new Error(`Session not found: ${sessionId}`);
-      if (!state.branches[branchId]) throw new Error(`Branch not found: ${branchId}`);
+      return withSessionLock(sessionId, async () => {
+        const state = await persistence.load(sessionId);
+        if (!state) throw new Error(`Session not found: ${sessionId}`);
+        if (!state.branches[branchId]) throw new Error(`Branch not found: ${branchId}`);
 
-      state.branches[branchId].status = BRANCH_STATUSES.DONE;
-      state.branches[branchId].finding = finding;
-      await persistence.save(state);
+        state.branches[branchId].status = BRANCH_STATUSES.DONE;
+        state.branches[branchId].finding = finding;
+        await persistence.save(state);
+      });
     },
 
     async getNextExploringBranch(sessionId: string): Promise<Branch | null> {

@@ -126,4 +126,48 @@ describe("createStateStore", () => {
       expect(await stateStore.isSessionComplete("ses_allcomplete")).toBe(true);
     });
   });
+
+  describe("concurrent operations", () => {
+    it("should not lose answers when recordAnswer is called concurrently", async () => {
+      // Setup: Create session with multiple branches, each with a question
+      await stateStore.createSession("ses_concurrent", "Test concurrent writes", [
+        { id: "branch1", scope: "Scope 1" },
+        { id: "branch2", scope: "Scope 2" },
+        { id: "branch3", scope: "Scope 3" },
+        { id: "branch4", scope: "Scope 4" },
+        { id: "branch5", scope: "Scope 5" },
+      ]);
+
+      // Add a question to each branch
+      for (let i = 1; i <= 5; i++) {
+        await stateStore.addQuestionToBranch("ses_concurrent", `branch${i}`, {
+          id: `q_concurrent_${i}`,
+          type: "ask_text",
+          text: `Question ${i}`,
+          config: { question: `Question ${i}` },
+        });
+      }
+
+      // Record all 5 answers CONCURRENTLY (not sequentially)
+      // This simulates what happens when multiple users answer questions at once
+      await Promise.all([
+        stateStore.recordAnswer("ses_concurrent", "q_concurrent_1", { text: "Answer 1" }),
+        stateStore.recordAnswer("ses_concurrent", "q_concurrent_2", { text: "Answer 2" }),
+        stateStore.recordAnswer("ses_concurrent", "q_concurrent_3", { text: "Answer 3" }),
+        stateStore.recordAnswer("ses_concurrent", "q_concurrent_4", { text: "Answer 4" }),
+        stateStore.recordAnswer("ses_concurrent", "q_concurrent_5", { text: "Answer 5" }),
+      ]);
+
+      // Verify ALL answers were recorded (this will fail with race condition)
+      const state = await stateStore.getSession("ses_concurrent");
+      expect(state).not.toBeNull();
+
+      for (let i = 1; i <= 5; i++) {
+        const branch = state!.branches[`branch${i}`];
+        const question = branch.questions[0];
+        expect(question.answer).toEqual({ text: `Answer ${i}` });
+        expect(question.answeredAt).toBeDefined();
+      }
+    });
+  });
 });

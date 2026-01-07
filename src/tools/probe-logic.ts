@@ -1,20 +1,33 @@
 // src/tools/probe-logic.ts
 // Inline probe logic - evaluates branch context and decides next action
 
-import type { QuestionConfig } from "@/session";
-import type { Branch } from "@/state";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+import type {
+  Answer,
+  AskCodeAnswer,
+  AskTextAnswer,
+  BaseConfig,
+  ConfirmAnswer,
+  EmojiReactAnswer,
+  PickManyAnswer,
+  PickOneAnswer,
+  QuestionType,
+  RankAnswer,
+  RateAnswer,
+  ReviewAnswer,
+  ShowOptionsAnswer,
+  SliderAnswer,
+  ThumbsAnswer,
+} from "@/session";
+import { QUESTIONS } from "@/session";
+import type { Branch, BranchQuestion } from "@/state";
 
 export interface ProbeResult {
   done: boolean;
   reason: string;
   finding?: string;
   question?: {
-    type: string;
-    config: QuestionConfig;
+    type: QuestionType;
+    config: BaseConfig;
   };
 }
 
@@ -48,12 +61,12 @@ export function evaluateBranch(branch: Branch): ProbeResult {
   }
 
   // Rule 3: Check if user explicitly confirmed/declined to continue
-  const lastAnswer = answeredQuestions[answeredQuestions.length - 1];
-  if (lastAnswer && isRecord(lastAnswer.answer)) {
-    const ans = lastAnswer.answer;
+  const lastQuestion = answeredQuestions[answeredQuestions.length - 1];
+  if (lastQuestion?.type === QUESTIONS.CONFIRM && lastQuestion.answer) {
+    const ans = lastQuestion.answer as ConfirmAnswer;
 
     // If user confirmed "ready to proceed", mark done
-    if (ans.choice === "yes" && lastAnswer.type === "confirm") {
+    if (ans.choice === "yes") {
       return {
         done: true,
         reason: "User confirmed direction is clear",
@@ -62,17 +75,17 @@ export function evaluateBranch(branch: Branch): ProbeResult {
     }
 
     // If user said "no" to confirm, ask what's unclear
-    if (ans.choice === "no" && lastAnswer.type === "confirm") {
+    if (ans.choice === "no") {
       return {
         done: false,
         reason: "User wants to clarify something",
         question: {
-          type: "ask_text",
+          type: QUESTIONS.ASK_TEXT,
           config: {
             question: `What aspect of "${branch.scope}" needs more discussion?`,
             placeholder: "What's unclear or needs more thought?",
             multiline: true,
-          } as QuestionConfig,
+          },
         },
       };
     }
@@ -100,15 +113,15 @@ export function evaluateBranch(branch: Branch): ProbeResult {
  * Synthesizes a meaningful finding from the branch's Q&A history
  */
 function synthesizeFinding(branch: Branch): string {
-  const answers = branch.questions
-    .filter((q) => q.answer !== undefined && isRecord(q.answer))
-    .map((q) => {
-      return extractAnswerSummary(q.text, q.answer as Record<string, unknown>);
-    });
+  const answeredQuestions = branch.questions.filter(
+    (q): q is BranchQuestion & { answer: Answer } => q.answer !== undefined,
+  );
 
-  if (answers.length === 0) {
+  if (answeredQuestions.length === 0) {
     return `${branch.scope}: No specific direction determined`;
   }
+
+  const answers = answeredQuestions.map((q) => extractAnswerSummary(q.type, q.answer));
 
   // Build a coherent finding
   const mainChoice = answers[0]; // First answer is usually the main decision
@@ -120,59 +133,81 @@ function synthesizeFinding(branch: Branch): string {
   return `${branch.scope}: ${mainChoice}`;
 }
 
-/**
- * Extracts a readable summary from an answer
- */
-function extractAnswerSummary(_questionText: string, answer: Record<string, unknown>): string {
-  // Handle different answer formats
-  if (answer.selected) {
-    const selected = answer.selected;
-    if (Array.isArray(selected)) {
-      return selected.join(", ");
-    }
-    return String(selected);
-  }
-  if (answer.choice) {
-    return String(answer.choice);
-  }
-  if (answer.text) {
-    const text = String(answer.text);
-    // Truncate long text answers
-    return text.length > 100 ? `${text.substring(0, 100)}...` : text;
-  }
-  if (answer.value !== undefined) {
-    return String(answer.value);
-  }
-  // Handle ranking answers: { ranking: [{id, rank}, ...] }
-  if (answer.ranking && Array.isArray(answer.ranking)) {
-    const ranking = answer.ranking as Array<{ id: string; rank: number }>;
-    const sorted = [...ranking].sort((a, b) => a.rank - b.rank);
-    return sorted.map((r) => r.id).join(" → ");
-  }
-  // Handle ratings answers: { ratings: {key: value, ...} }
-  if (answer.ratings && typeof answer.ratings === "object") {
-    const ratings = answer.ratings as Record<string, number>;
-    const entries = Object.entries(ratings);
-    if (entries.length === 0) return "no ratings";
-    // Show top-rated items
-    const sorted = entries.sort((a, b) => b[1] - a[1]);
-    return sorted
-      .slice(0, 3)
-      .map(([k, v]) => `${k}: ${v}`)
-      .join(", ");
-  }
+// --- Answer Extraction ---
 
-  // Fallback: try to extract any meaningful value
-  const values = Object.values(answer).filter((v) => v !== undefined && v !== null);
-  if (values.length > 0) {
-    const val = values[0];
-    // Don't stringify objects/arrays - they produce [object Object]
-    if (typeof val === "object") {
-      return "response received";
+const MAX_TEXT_LENGTH = 100;
+
+function truncateText(text: string): string {
+  return text.length > MAX_TEXT_LENGTH ? `${text.substring(0, MAX_TEXT_LENGTH)}...` : text;
+}
+
+export function extractAnswerSummary(type: QuestionType, answer: Answer): string {
+  switch (type) {
+    case QUESTIONS.PICK_ONE:
+      return (answer as PickOneAnswer).selected;
+
+    case QUESTIONS.PICK_MANY:
+      return (answer as PickManyAnswer).selected.join(", ");
+
+    case QUESTIONS.CONFIRM:
+      return (answer as ConfirmAnswer).choice;
+
+    case QUESTIONS.THUMBS:
+      return (answer as ThumbsAnswer).choice;
+
+    case QUESTIONS.EMOJI_REACT:
+      return (answer as EmojiReactAnswer).emoji;
+
+    case QUESTIONS.ASK_TEXT:
+      return truncateText((answer as AskTextAnswer).text);
+
+    case QUESTIONS.SLIDER:
+      return String((answer as SliderAnswer).value);
+
+    case QUESTIONS.RANK: {
+      const rankAnswer = answer as RankAnswer;
+      const sorted = [...rankAnswer.ranking].sort((a, b) => a.rank - b.rank);
+      return sorted.map((r) => r.id).join(" → ");
     }
-    return String(val);
+
+    case QUESTIONS.RATE: {
+      const rateAnswer = answer as RateAnswer;
+      const entries = Object.entries(rateAnswer.ratings);
+      if (entries.length === 0) return "no ratings";
+      const sorted = entries.sort((a, b) => b[1] - a[1]);
+      return sorted
+        .slice(0, 3)
+        .map(([k, v]) => `${k}: ${v}`)
+        .join(", ");
+    }
+
+    case QUESTIONS.ASK_CODE:
+      return truncateText((answer as AskCodeAnswer).code);
+
+    case QUESTIONS.ASK_IMAGE:
+    case QUESTIONS.ASK_FILE:
+      return "file(s) uploaded";
+
+    case QUESTIONS.SHOW_DIFF:
+    case QUESTIONS.SHOW_PLAN:
+    case QUESTIONS.REVIEW_SECTION: {
+      const reviewAnswer = answer as ReviewAnswer;
+      return reviewAnswer.feedback
+        ? `${reviewAnswer.decision}: ${truncateText(reviewAnswer.feedback)}`
+        : reviewAnswer.decision;
+    }
+
+    case QUESTIONS.SHOW_OPTIONS: {
+      const optAnswer = answer as ShowOptionsAnswer;
+      return optAnswer.feedback ? `${optAnswer.selected}: ${truncateText(optAnswer.feedback)}` : optAnswer.selected;
+    }
+
+    default: {
+      // Exhaustiveness check - if we get here, we missed a case
+      const _exhaustive: never = type;
+      return String(_exhaustive);
+    }
   }
-  return "unspecified";
 }
 
 /**
@@ -187,28 +222,28 @@ function generateContextualFollowUp(
 
   // After first answer: ask about constraints/requirements
   if (answeredCount === 1) {
-    const firstAnswer = answeredQuestions[0].answer;
-    if (!isRecord(firstAnswer)) return null;
-    const chosenOption = extractAnswerSummary("", firstAnswer);
+    const firstQuestion = answeredQuestions[0];
+    if (!firstQuestion.answer) return null;
+    const chosenOption = extractAnswerSummary(firstQuestion.type, firstQuestion.answer);
 
     // Contextual follow-up based on what they chose
     return {
-      type: "pick_one",
+      type: QUESTIONS.PICK_ONE,
       config: {
         question: `What's most important for "${chosenOption}"?`,
         options: generatePriorityOptions(scope),
-      } as QuestionConfig,
+      },
     };
   }
 
   // After second answer: confirm direction
   if (answeredCount === 2) {
     return {
-      type: "confirm",
+      type: QUESTIONS.CONFIRM,
       config: {
         question: `Is the direction clear for "${branch.scope}"?`,
         context: "Yes = we have enough info. No = let's discuss more.",
-      } as QuestionConfig,
+      },
     };
   }
 

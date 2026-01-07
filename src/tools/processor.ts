@@ -74,9 +74,7 @@ async function runProbeAgent(
   const probeSessionId = sessionResult.data.id;
 
   try {
-    // Send the context and get the response (fall back to defaults if not configured)
-    const modelString = probeConfig.model ?? defaultProbeAgent.model;
-    const model = modelString ? parseModelString(modelString) : undefined;
+    const model = parseModelString(probeConfig.model ?? defaultProbeAgent.model!);
     const system = probeConfig.prompt ?? defaultProbeAgent.prompt;
 
     const promptResult = await client.session.prompt({

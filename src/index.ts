@@ -11,7 +11,7 @@ const Octto: Plugin = async ({ client }) => {
   const customConfig = await loadCustomConfig(agents);
   const sessions = createSessionStore();
   const tracked = new Map<string, Set<string>>();
-  const tools = createOcttoTools(sessions, client, customConfig);
+  const tools = createOcttoTools(sessions, client);
 
   const originalExecute = tools.start_session.execute;
   tools.start_session.execute = async (args, toolCtx) => {

@@ -1,6 +1,5 @@
 // src/tools/brainstorm.ts
 import { tool } from "@opencode-ai/plugin/tool";
-import type { AgentConfig } from "@opencode-ai/sdk";
 
 import type { ReviewAnswer, SessionStore } from "@/session";
 import { QUESTION_TYPES, QUESTIONS, STATUSES } from "@/session";
@@ -28,7 +27,6 @@ async function collectAnswers(
   sessionId: string,
   browserSessionId: string,
   client: OpencodeClient,
-  probeConfig: AgentConfig,
 ): Promise<CollectionResult> {
   const pendingProcessing: Promise<void>[] = [];
 
@@ -62,7 +60,6 @@ async function collectAnswers(
       question_id,
       response,
       client,
-      probeConfig,
     ).catch((error) => {
       console.error(`[octto] Error processing answer ${question_id}:`, error);
     });
@@ -165,11 +162,7 @@ function formatCompletionResult(state: BrainstormState, approved: boolean, feedb
 
 // --- Tool definitions ---
 
-export function createBrainstormTools(
-  sessions: SessionStore,
-  client: OpencodeClient,
-  probeConfig: AgentConfig,
-): OcttoTools {
+export function createBrainstormTools(sessions: SessionStore, client: OpencodeClient): OcttoTools {
   const store = createStateStore();
 
   const create_brainstorm = tool({
@@ -304,7 +297,6 @@ This is the recommended way to run a brainstorm - just create_brainstorm then aw
         args.session_id,
         args.browser_session_id,
         client,
-        probeConfig,
       );
 
       if (!state) return "<error>Session lost</error>";

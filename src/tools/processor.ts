@@ -1,17 +1,10 @@
 // src/tools/processor.ts
 
-import type { AgentConfig } from "@opencode-ai/sdk";
-
-import { agent as defaultProbeAgent } from "@/agents/probe";
+import { AGENTS } from "@/agents";
 import type { Answer, QuestionType, SessionStore } from "@/session";
 import { BRANCH_STATUSES, type BrainstormState, type StateStore } from "@/state";
 
 import type { OpencodeClient } from "./types";
-
-function parseModelString(modelString: string): { providerID: string; modelID: string } {
-  const [providerID, modelID] = modelString.split("/");
-  return { providerID, modelID };
-}
 
 interface ProbeResult {
   done: boolean;
@@ -54,13 +47,7 @@ function formatBranchContext(state: BrainstormState, branchId: string): string {
   return lines.join("\n");
 }
 
-async function runProbeAgent(
-  client: OpencodeClient,
-  state: BrainstormState,
-  branchId: string,
-  probeConfig: AgentConfig,
-): Promise<ProbeResult> {
-  // Create a temporary session for the probe
+async function runProbeAgent(client: OpencodeClient, state: BrainstormState, branchId: string): Promise<ProbeResult> {
   const sessionResult = await client.session.create({
     body: {
       title: `probe-${branchId}`,
@@ -74,14 +61,10 @@ async function runProbeAgent(
   const probeSessionId = sessionResult.data.id;
 
   try {
-    const model = parseModelString(probeConfig.model ?? defaultProbeAgent.model!);
-    const system = probeConfig.prompt ?? defaultProbeAgent.prompt;
-
     const promptResult = await client.session.prompt({
       path: { id: probeSessionId },
       body: {
-        model,
-        system,
+        agent: AGENTS.probe,
         tools: {}, // Disable all tools
         parts: [{ type: "text", text: formatBranchContext(state, branchId) }],
       },
@@ -123,7 +106,6 @@ export async function processAnswer(
   questionId: string,
   answer: Answer,
   client: OpencodeClient,
-  probeConfig: AgentConfig,
 ): Promise<void> {
   const state = await stateStore.getSession(sessionId);
   if (!state) return;
@@ -156,7 +138,7 @@ export async function processAnswer(
   if (!branch || branch.status === BRANCH_STATUSES.DONE) return;
 
   // Evaluate branch using probe agent
-  const result = await runProbeAgent(client, updatedState, branchId, probeConfig);
+  const result = await runProbeAgent(client, updatedState, branchId);
 
   if (result.done) {
     await stateStore.completeBranch(sessionId, branchId, result.finding || "No finding");

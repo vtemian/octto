@@ -9,7 +9,7 @@ import { createStateStore } from "@/state";
 import { formatBranchStatus, formatFindings, formatFindingsList, formatQASummary } from "./formatters";
 import { processAnswer } from "./processor";
 import type { OcttoTools } from "./types";
-import { generateId } from "./utils";
+import { generateSessionId } from "./utils";
 
 const MAX_ITERATIONS = 50;
 const ANSWER_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
@@ -180,7 +180,7 @@ export function createBrainstormTools(sessions: SessionStore): OcttoTools {
         .describe("Branches to explore"),
     },
     execute: async (args) => {
-      const sessionId = generateId("ses");
+      const sessionId = generateSessionId();
 
       await store.createSession(
         sessionId,

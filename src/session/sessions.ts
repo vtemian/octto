@@ -1,7 +1,7 @@
 import type { ServerWebSocket } from "bun";
 
 import { DEFAULT_ANSWER_TIMEOUT_MS } from "../constants";
-import { generateId } from "../tools/utils";
+import { generateQuestionId, generateSessionId } from "../tools/utils";
 import { openBrowser } from "./browser";
 import { createServer } from "./server";
 import {
@@ -54,7 +54,7 @@ export function createSessionStore(options: SessionStoreOptions = {}): SessionSt
 
   const store: SessionStore = {
     async startSession(input: StartSessionInput): Promise<StartSessionOutput> {
-      const sessionId = generateId("ses");
+      const sessionId = generateSessionId();
 
       const { server, port } = await createServer(sessionId, store);
       const url = `http://localhost:${port}`;
@@ -75,7 +75,7 @@ export function createSessionStore(options: SessionStoreOptions = {}): SessionSt
       const questionIds: string[] = [];
       if (input.questions && input.questions.length > 0) {
         for (const q of input.questions) {
-          const questionId = generateId("q");
+          const questionId = generateQuestionId();
           const question: Question = {
             id: questionId,
             sessionId,
@@ -141,7 +141,7 @@ export function createSessionStore(options: SessionStoreOptions = {}): SessionSt
         throw new Error(`Session not found: ${sessionId}`);
       }
 
-      const questionId = generateId("q");
+      const questionId = generateQuestionId();
 
       const question: Question = {
         id: questionId,

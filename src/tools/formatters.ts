@@ -1,43 +1,59 @@
 // src/tools/formatters.ts
 
-import type { BrainstormState, Branch } from "@/state";
+import type { Answer } from "@/session";
+import type { BrainstormState, Branch, BranchQuestion } from "@/state";
+
+import { extractAnswerSummary } from "./probe-logic";
+
+function escapeXml(str: string): string {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
 
 export function formatBranchFinding(branch: Branch): string {
-  return `### ${branch.id}\n**Scope:** ${branch.scope}\n**Finding:** ${branch.finding || "(no finding)"}`;
+  return `<branch id="${branch.id}">
+    <scope>${escapeXml(branch.scope)}</scope>
+    <finding>${escapeXml(branch.finding || "no finding")}</finding>
+  </branch>`;
 }
 
 export function formatBranchStatus(branch: Branch): string {
-  const status = branch.status === "done" ? "DONE" : "EXPLORING";
-  return `### ${branch.id} [${status}]\n**Scope:** ${branch.scope}\n**Finding:** ${branch.finding || "(pending)"}`;
+  return `<branch id="${branch.id}" status="${branch.status}">
+    <scope>${escapeXml(branch.scope)}</scope>
+    <finding>${escapeXml(branch.finding || "pending")}</finding>
+  </branch>`;
 }
 
 export function formatFindings(state: BrainstormState): string {
-  return state.branch_order.map((id) => formatBranchFinding(state.branches[id])).join("\n\n");
+  const branches = state.branch_order.map((id) => formatBranchFinding(state.branches[id])).join("\n");
+  return `<findings>\n${branches}\n</findings>`;
 }
 
 export function formatFindingsList(state: BrainstormState): string {
-  return state.branch_order
+  const items = state.branch_order
     .map((id) => {
       const b = state.branches[id];
-      return `- **${b.scope}:** ${b.finding || "(no finding)"}`;
+      return `  <finding scope="${escapeXml(b.scope)}">${escapeXml(b.finding || "no finding")}</finding>`;
     })
     .join("\n");
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return `<findings>\n${items}\n</findings>`;
 }
 
 export function formatQASummary(branch: Branch): string {
-  return branch.questions
-    .filter((q) => q.answer !== undefined && q.answer !== null)
+  const answered = branch.questions.filter((q): q is BranchQuestion & { answer: Answer } => q.answer !== undefined);
+
+  if (answered.length === 0) {
+    return "<qa_summary>no questions answered</qa_summary>";
+  }
+
+  const qas = answered
     .map((q) => {
-      if (!isRecord(q.answer)) {
-        return `- **${q.text}**\n  → ${String(q.answer)}`;
-      }
-      const ans = q.answer;
-      const text = ans.selected || ans.choice || ans.text || JSON.stringify(ans);
-      return `- **${q.text}**\n  → ${text}`;
+      const answerText = extractAnswerSummary(q.type, q.answer);
+      return `    <qa>
+      <question>${escapeXml(q.text)}</question>
+      <answer>${escapeXml(answerText)}</answer>
+    </qa>`;
     })
     .join("\n");
+
+  return qas;
 }

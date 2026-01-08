@@ -36,7 +36,7 @@ When you describe your idea, octto opens an interactive UI:
 Add to `~/.config/opencode/opencode.json`:
 
 ```json
-{ "plugin": ["/path/to/octto"] }
+{ "plugin": ["octto"] }
 ```
 
 Select the **octto** agent:

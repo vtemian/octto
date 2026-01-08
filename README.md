@@ -2,24 +2,11 @@
 
 An interactive browser UI for AI brainstorming. Stop typing in terminals. Start clicking in browsers.
 
-## The Problem
 
-AI brainstorming today happens in the terminal:
-```
-Agent: What framework do you want?
-You: *types* React
-Agent: *thinks for 10 seconds*
-Agent: What about styling?
-You: *types* Tailwind
-Agent: *thinks*
-...repeat for 10 minutes...
-```
 
-Slow. Tedious. One question at a time.
+https://github.com/user-attachments/assets/9ba8868d-16f3-4451-9b73-6b7e1fc54655
 
-## The Solution
 
-**A browser window with visual questions you can answer in seconds.**
 
 When you describe your idea, octto opens an interactive UI:
 

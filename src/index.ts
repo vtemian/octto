@@ -47,16 +47,8 @@ const Octto: Plugin = async ({ client, directory }) => {
     tool: tools,
 
     config: async (config) => {
-      // Apply agent overrides from custom config
+      // Apply agent overrides from custom config (fragments already injected at plugin load)
       config.agent = { ...config.agent, ...customConfig.agents };
-
-      // Inject fragments into agent prompts (for opencode config)
-      for (const agentName of Object.values(AGENTS)) {
-        const prefix = getAgentSystemPromptPrefix(fragments, agentName);
-        if (prefix && config.agent[agentName]?.prompt) {
-          config.agent[agentName].prompt = prefix + config.agent[agentName].prompt;
-        }
-      }
     },
 
     event: async ({ event }) => {

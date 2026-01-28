@@ -14,6 +14,14 @@ const Octto: Plugin = async ({ client, directory }) => {
   // Load and merge fragments from global config and project config
   const fragments = await createFragmentInjector({ projectDir: directory }, customConfig.fragments);
 
+  // Inject fragments into agent prompts at the source
+  for (const agentName of Object.values(AGENTS)) {
+    const prefix = getAgentSystemPromptPrefix(fragments, agentName);
+    if (prefix && customConfig.agents[agentName]?.prompt) {
+      customConfig.agents[agentName].prompt = prefix + customConfig.agents[agentName].prompt;
+    }
+  }
+
   // Warn about unknown agent names in global config at startup
   warnUnknownAgents(customConfig.fragments);
   const sessions = createSessionStore({ port: customConfig.port });
@@ -42,7 +50,7 @@ const Octto: Plugin = async ({ client, directory }) => {
       // Apply agent overrides from custom config
       config.agent = { ...config.agent, ...customConfig.agents };
 
-      // Inject fragments into agent prompts
+      // Inject fragments into agent prompts (for opencode config)
       for (const agentName of Object.values(AGENTS)) {
         const prefix = getAgentSystemPromptPrefix(fragments, agentName);
         if (prefix && config.agent[agentName]?.prompt) {

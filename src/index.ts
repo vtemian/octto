@@ -48,7 +48,7 @@ const Octto: Plugin = async ({ client, directory }) => {
 
     config: async (config) => {
       // Apply agent overrides from custom config (fragments already injected at plugin load)
-      config.agent = { ...config.agent, ...customConfig.agents };
+      config.agent = { ...customConfig.agents, ...config.agent };
     },
 
     event: async ({ event }) => {

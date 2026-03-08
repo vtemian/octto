@@ -122,6 +122,41 @@ describe("OcttoConfigSchema", () => {
       expect(result.success).toBe(false);
     });
   });
+
+  describe("agents with variant", () => {
+    it("should accept agent config with variant", () => {
+      const result = v.safeParse(OcttoConfigSchema, {
+        agents: {
+          octto: { model: "openai/gpt-5.2", variant: "high" },
+        },
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.output.agents?.octto?.variant).toBe("high");
+      }
+    });
+
+    it("should accept agent config without variant", () => {
+      const result = v.safeParse(OcttoConfigSchema, {
+        agents: {
+          octto: { model: "openai/gpt-5.2" },
+        },
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.output.agents?.octto?.variant).toBeUndefined();
+      }
+    });
+
+    it("should reject non-string variant", () => {
+      const result = v.safeParse(OcttoConfigSchema, {
+        agents: {
+          octto: { variant: 123 },
+        },
+      });
+      expect(result.success).toBe(false);
+    });
+  });
 });
 
 describe("FragmentsSchema", () => {

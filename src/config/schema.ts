@@ -5,6 +5,7 @@ import { AGENTS } from "@/agents";
 export const AgentOverrideSchema = v.partial(
   v.object({
     model: v.string(),
+    variant: v.string(),
     temperature: v.pipe(v.number(), v.minValue(0), v.maxValue(2)),
     maxSteps: v.pipe(v.number(), v.integer(), v.minValue(1)),
   }),

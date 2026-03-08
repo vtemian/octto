@@ -1,6 +1,6 @@
 {
   "name": "octto",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "OpenCode plugin that turns rough ideas into designs through branch-based exploration",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

@@ -2,6 +2,8 @@ import * as v from "valibot";
 
 import { AGENTS } from "@/agents";
 
+export const MAX_PORT = 65535;
+
 export const AgentOverrideSchema = v.partial(
   v.object({
     model: v.string(),
@@ -11,7 +13,7 @@ export const AgentOverrideSchema = v.partial(
   }),
 );
 
-export const PortSchema = v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(65535));
+export const PortSchema = v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(MAX_PORT));
 
 export const FragmentsSchema = v.optional(v.record(v.enum(AGENTS), v.array(v.string())));
 

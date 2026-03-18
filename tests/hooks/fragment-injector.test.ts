@@ -1,10 +1,9 @@
 // tests/hooks/fragment-injector.test.ts
-import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { AGENTS } from "../../src/agents";
 import {
   formatFragmentsBlock,
   levenshteinDistance,

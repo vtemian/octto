@@ -18,7 +18,7 @@ import type {
   ShowPlanConfig,
   SliderConfig,
   ThumbsConfig,
-} from "../types";
+} from "@/types";
 
 export const STATUSES = {
   PENDING: "pending",

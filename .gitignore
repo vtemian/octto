@@ -23,3 +23,6 @@ yarn.lock
 # Octto state files
 .octto/
 
+# Worktrees
+.worktrees/
+

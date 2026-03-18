@@ -40,6 +40,7 @@ describe("OcttoPlugin", () => {
       const result = await plugin(createMockContext());
 
       expect(result.tool!.start_session).toBeDefined();
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(result.tool!.start_session.execute).toBeDefined();
     });
 
@@ -50,6 +51,7 @@ describe("OcttoPlugin", () => {
 
       // brainstorm tool removed (caused deadlock), use push_question instead
       expect(result.tool!.push_question).toBeDefined();
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(result.tool!.push_question.execute).toBeDefined();
     });
 

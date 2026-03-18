@@ -7,7 +7,7 @@ import * as v from "valibot";
 
 import { AGENTS } from "@/agents";
 
-import { AgentOverrideSchema, type Fragments, type OcttoConfig, OcttoConfigSchema } from "./schema";
+import { AgentOverrideSchema, type Fragments, MAX_PORT, type OcttoConfig, OcttoConfigSchema } from "./schema";
 
 export type { AgentOverride, Fragments, OcttoConfig } from "./schema";
 
@@ -23,7 +23,7 @@ export function resolvePort(configPort?: number): number {
 
   if (envValue !== undefined) {
     const parsed = Number(envValue);
-    if (Number.isInteger(parsed) && parsed >= 0 && parsed <= 65535) {
+    if (Number.isInteger(parsed) && parsed >= 0 && parsed <= MAX_PORT) {
       return parsed;
     }
   }
@@ -42,34 +42,8 @@ function formatValidationErrors(issues: v.BaseIssue<unknown>[]): string {
     .join("\n");
 }
 
-/**
- * Load raw user configuration from ~/.config/opencode/octto.json
- * Uses partial validation: logs errors but salvages valid agent overrides.
- */
-async function load(configDir?: string): Promise<OcttoConfig | null> {
-  const baseDir = configDir ?? join(homedir(), ".config", "opencode");
-  const configPath = join(baseDir, "octto.json");
-
-  let parsed: unknown;
-  try {
-    const content = await readFile(configPath, "utf-8");
-    parsed = JSON.parse(content);
-  } catch {
-    return null;
-  }
-
-  // Try full validation first
-  const result = v.safeParse(OcttoConfigSchema, parsed);
-  if (result.success) {
-    return result.output;
-  }
-
-  // Full validation failed - try partial validation
-  console.warn(`[octto] Config validation errors in ${configPath}:`);
-  console.warn(formatValidationErrors(result.issues));
-
-  // Attempt to salvage valid agents
-  if (typeof parsed !== "object" || parsed === null || !("agents" in parsed)) {
+function salvageValidAgents(parsed: object): OcttoConfig | null {
+  if (!("agents" in parsed)) {
     console.warn("[octto] No valid agents found in config, using defaults");
     return null;
   }
@@ -106,6 +80,34 @@ async function load(configDir?: string): Promise<OcttoConfig | null> {
 
   console.warn("[octto] Partial config loaded - some overrides applied despite errors");
   return { agents: validAgents };
+}
+
+async function load(configDir?: string): Promise<OcttoConfig | null> {
+  const baseDir = configDir ?? join(homedir(), ".config", "opencode");
+  const configPath = join(baseDir, "octto.json");
+
+  let parsed: unknown;
+  try {
+    const content = await readFile(configPath, "utf-8");
+    parsed = JSON.parse(content);
+  } catch {
+    return null;
+  }
+
+  const result = v.safeParse(OcttoConfigSchema, parsed);
+  if (result.success) {
+    return result.output;
+  }
+
+  console.warn(`[octto] Config validation errors in ${configPath}:`);
+  console.warn(formatValidationErrors(result.issues));
+
+  if (typeof parsed !== "object" || parsed === null) {
+    console.warn("[octto] No valid agents found in config, using defaults");
+    return null;
+  }
+
+  return salvageValidAgents(parsed);
 }
 
 export interface CustomConfig {

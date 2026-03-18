@@ -9,6 +9,7 @@ import { AGENTS } from "@/agents";
 type FragmentsRecord = Record<string, string[]> | undefined;
 
 const VALID_AGENT_NAMES = Object.values(AGENTS);
+const MAX_SUGGESTION_DISTANCE = 3;
 
 const ProjectFragmentsSchema = v.record(v.string(), v.array(v.string()));
 
@@ -31,20 +32,12 @@ export function formatFragmentsBlock(fragments: string[] | undefined): string {
 export function mergeFragments(global: FragmentsRecord, project: FragmentsRecord): Record<string, string[]> {
   const result: Record<string, string[]> = {};
 
-  if (global) {
-    for (const [agent, frags] of Object.entries(global)) {
-      result[agent] = [...frags];
-    }
+  for (const [agent, frags] of Object.entries(global ?? {})) {
+    result[agent] = [...frags];
   }
 
-  if (project) {
-    for (const [agent, frags] of Object.entries(project)) {
-      if (result[agent]) {
-        result[agent].push(...frags);
-      } else {
-        result[agent] = [...frags];
-      }
-    }
+  for (const [agent, frags] of Object.entries(project ?? {})) {
+    result[agent] = [...(result[agent] ?? []), ...frags];
   }
 
   return result;
@@ -58,7 +51,7 @@ export async function loadProjectFragments(projectDir: string): Promise<Record<s
 
   try {
     const content = await readFile(fragmentsPath, "utf-8");
-    const parsed = JSON.parse(content);
+    const parsed: unknown = JSON.parse(content);
 
     const result = v.safeParse(ProjectFragmentsSchema, parsed);
     if (!result.success) {
@@ -76,6 +69,7 @@ export async function loadProjectFragments(projectDir: string): Promise<Record<s
  * Calculate Levenshtein distance between two strings.
  * Used for suggesting similar agent names for typos.
  */
+/* eslint-disable max-depth, sonarjs/cognitive-complexity */
 export function levenshteinDistance(a: string, b: string): number {
   if (a.length === 0) return b.length;
   if (b.length === 0) return a.length;
@@ -95,22 +89,30 @@ export function levenshteinDistance(a: string, b: string): number {
       if (b.charAt(i - 1) === a.charAt(j - 1)) {
         matrix[i][j] = matrix[i - 1][j - 1];
       } else {
-        matrix[i][j] = Math.min(
-          matrix[i - 1][j - 1] + 1, // substitution
-          matrix[i][j - 1] + 1, // insertion
-          matrix[i - 1][j] + 1, // deletion
-        );
+        matrix[i][j] = Math.min(matrix[i - 1][j - 1] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j] + 1);
       }
     }
   }
 
   return matrix[b.length][a.length];
 }
+/* eslint-enable max-depth, sonarjs/cognitive-complexity */
 
-/**
- * Warn about unknown agent names in fragments config.
- * Suggests similar valid agent names for likely typos.
- */
+function findClosestAgent(name: string): string | undefined {
+  let closest: string | undefined;
+  let minDistance = Infinity;
+
+  for (const validName of VALID_AGENT_NAMES) {
+    const distance = levenshteinDistance(name, validName);
+    if (distance < minDistance && distance <= MAX_SUGGESTION_DISTANCE) {
+      minDistance = distance;
+      closest = validName;
+    }
+  }
+
+  return closest;
+}
+
 export function warnUnknownAgents(fragments: Record<string, string[]> | undefined): void {
   if (!fragments) return;
 
@@ -119,18 +121,7 @@ export function warnUnknownAgents(fragments: Record<string, string[]> | undefine
       continue;
     }
 
-    // Find closest valid agent name
-    let closest: string | undefined;
-    let minDistance = Infinity;
-
-    for (const validName of VALID_AGENT_NAMES) {
-      const distance = levenshteinDistance(agentName, validName);
-      if (distance < minDistance && distance <= 3) {
-        minDistance = distance;
-        closest = validName;
-      }
-    }
-
+    const closest = findClosestAgent(agentName);
     let message = `[octto] Unknown agent "${agentName}" in fragments config.`;
     if (closest) {
       message += ` Did you mean "${closest}"?`;

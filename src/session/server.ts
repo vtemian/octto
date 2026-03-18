@@ -9,6 +9,66 @@ interface WsData {
   sessionId: string;
 }
 
+function handleFetch(
+  req: Request,
+  server: Server<WsData>,
+  sessionId: string,
+  htmlBundle: string,
+): Response | undefined {
+  const url = new URL(req.url);
+
+  if (url.pathname === "/ws") {
+    const success = server.upgrade(req, {
+      data: { sessionId },
+    });
+    if (success) {
+      return undefined;
+    }
+    return new Response("WebSocket upgrade failed", { status: 400 });
+  }
+
+  if (url.pathname === "/" || url.pathname === "/index.html") {
+    return new Response(htmlBundle, {
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+      },
+    });
+  }
+
+  return new Response("Not Found", { status: 404 });
+}
+
+function handleWsOpen(ws: ServerWebSocket<WsData>, store: SessionStore): void {
+  const { sessionId } = ws.data;
+  store.handleWsConnect(sessionId, ws);
+}
+
+function handleWsClose(ws: ServerWebSocket<WsData>, store: SessionStore): void {
+  const { sessionId } = ws.data;
+  store.handleWsDisconnect(sessionId);
+}
+
+function handleWsMessage(ws: ServerWebSocket<WsData>, message: string | Buffer, store: SessionStore): void {
+  const { sessionId } = ws.data;
+
+  let parsed: WsClientMessage;
+  try {
+    parsed = JSON.parse(message.toString()) as WsClientMessage;
+  } catch (error: unknown) {
+    console.error("[octto] Failed to parse WebSocket message:", error);
+    ws.send(
+      JSON.stringify({
+        type: "error",
+        error: "Invalid message format",
+        details: error instanceof Error ? error.message : "Parse failed",
+      }),
+    );
+    return;
+  }
+
+  store.handleWsMessage(sessionId, parsed);
+}
+
 export async function createServer(
   sessionId: string,
   store: SessionStore,
@@ -18,64 +78,14 @@ export async function createServer(
 
   const server = Bun.serve<WsData>({
     port: configuredPort ?? 0,
-    fetch(req, server) {
-      const url = new URL(req.url);
-
-      // WebSocket upgrade
-      if (url.pathname === "/ws") {
-        const success = server.upgrade(req, {
-          data: { sessionId },
-        });
-        if (success) {
-          return undefined;
-        }
-        return new Response("WebSocket upgrade failed", { status: 400 });
-      }
-
-      // Serve the bundled HTML app
-      if (url.pathname === "/" || url.pathname === "/index.html") {
-        return new Response(htmlBundle, {
-          headers: {
-            "Content-Type": "text/html; charset=utf-8",
-          },
-        });
-      }
-
-      return new Response("Not Found", { status: 404 });
-    },
+    fetch: (req, srv) => handleFetch(req, srv, sessionId, htmlBundle),
     websocket: {
-      open(ws: ServerWebSocket<WsData>) {
-        const { sessionId } = ws.data;
-        store.handleWsConnect(sessionId, ws);
-      },
-      close(ws: ServerWebSocket<WsData>) {
-        const { sessionId } = ws.data;
-        store.handleWsDisconnect(sessionId);
-      },
-      message(ws: ServerWebSocket<WsData>, message: string | Buffer) {
-        const { sessionId } = ws.data;
-
-        let parsed: WsClientMessage;
-        try {
-          parsed = JSON.parse(message.toString()) as WsClientMessage;
-        } catch (error) {
-          console.error("[octto] Failed to parse WebSocket message:", error);
-          ws.send(
-            JSON.stringify({
-              type: "error",
-              error: "Invalid message format",
-              details: error instanceof Error ? error.message : "Parse failed",
-            }),
-          );
-          return;
-        }
-
-        store.handleWsMessage(sessionId, parsed);
-      },
+      open: (ws) => handleWsOpen(ws, store),
+      close: (ws) => handleWsClose(ws, store),
+      message: (ws, msg) => handleWsMessage(ws, msg, store),
     },
   });
 
-  // Port is always defined when using port: 0
   const port = server.port;
   if (port === undefined) {
     throw new Error("Failed to get server port");

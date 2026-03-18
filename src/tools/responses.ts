@@ -3,10 +3,10 @@ import { tool } from "@opencode-ai/plugin/tool";
 
 import { type SessionStore, STATUSES } from "@/session";
 
-import type { OcttoTools } from "./types";
+import type { OcttoTool, OcttoTools } from "./types";
 
-export function createResponseTools(sessions: SessionStore): OcttoTools {
-  const get_answer = tool({
+function buildGetAnswer(sessions: SessionStore): OcttoTool {
+  return tool({
     description: `Get the answer to a SPECIFIC question.
 By default returns immediately with current status.
 Set block=true to wait for user response (with optional timeout).
@@ -45,8 +45,10 @@ ${JSON.stringify(result.response, null, 2)}
 ${result.status === STATUSES.PENDING ? "User has not answered yet. Call again with block=true to wait." : ""}`;
     },
   });
+}
 
-  const get_next_answer = tool({
+function buildGetNextAnswer(sessions: SessionStore): OcttoTool {
+  return tool({
     description: `Wait for ANY question to be answered. Returns whichever question the user answers first.
 This is the PREFERRED way to get answers - lets user answer in any order.
 Push multiple questions, then call this repeatedly to get answers as they come.`,
@@ -91,8 +93,10 @@ Push more questions or end the session.`;
 ${result.reason === STATUSES.TIMEOUT ? "Timed out waiting for response." : "No answer yet."}`;
     },
   });
+}
 
-  const list_questions = tool({
+function buildListQuestions(sessions: SessionStore): OcttoTool {
+  return tool({
     description: `List all questions and their status for a session.`,
     args: {
       session_id: tool.schema.string().optional().describe("Session ID (omit for all sessions)"),
@@ -115,8 +119,10 @@ ${result.reason === STATUSES.TIMEOUT ? "Timed out waiting for response." : "No a
       return output;
     },
   });
+}
 
-  const cancel_question = tool({
+function buildCancelQuestion(sessions: SessionStore): OcttoTool {
+  return tool({
     description: `Cancel a pending question.
 The question will be removed from the user's queue.`,
     args: {
@@ -130,6 +136,13 @@ The question will be removed from the user's queue.`,
       return `Could not cancel question ${args.question_id}. It may already be answered or not exist.`;
     },
   });
+}
 
-  return { get_answer, get_next_answer, list_questions, cancel_question };
+export function createResponseTools(sessions: SessionStore): OcttoTools {
+  return {
+    get_answer: buildGetAnswer(sessions),
+    get_next_answer: buildGetNextAnswer(sessions),
+    list_questions: buildListQuestions(sessions),
+    cancel_question: buildCancelQuestion(sessions),
+  };
 }

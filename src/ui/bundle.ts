@@ -1,5 +1,3 @@
-// src/ui/bundle.ts
-
 /**
  * Returns the bundled HTML for the octto UI.
  * Uses nof1 design system - IBM Plex Mono, terminal aesthetic.
@@ -1289,7 +1287,7 @@ export function getHtmlBundle(): string {
         const promises = Array.from(input.files).map(file => {
           return new Promise((resolve) => {
             const reader = new FileReader();
-            reader.onload = () => resolve({ name: file.name, type: file.type, data: reader.result });
+            reader.onload = () => resolve({ name: file.name, type: file.type, content: reader.result });
             reader.readAsDataURL(file);
           });
         });
@@ -1298,7 +1296,7 @@ export function getHtmlBundle(): string {
         });
       }
     }
-    
+
     function previewImages(questionId) {
       const input = document.getElementById('image_' + questionId);
       const preview = document.getElementById('preview_' + questionId);
@@ -1312,14 +1310,14 @@ export function getHtmlBundle(): string {
         preview.appendChild(img);
       }
     }
-    
+
     function submitFiles(questionId) {
       const input = document.getElementById('file_' + questionId);
       if (input && input.files.length > 0) {
         const promises = Array.from(input.files).map(file => {
           return new Promise((resolve) => {
             const reader = new FileReader();
-            reader.onload = () => resolve({ name: file.name, type: file.type, size: file.size, data: reader.result });
+            reader.onload = () => resolve({ name: file.name, type: file.type, size: file.size, content: reader.result });
             reader.readAsDataURL(file);
           });
         });

@@ -1,15 +1,15 @@
 export interface Waiters<K, T> {
-  register: (key: K, callback: (data: T) => void) => () => void;
-  notifyFirst: (key: K, data: T) => void;
-  notifyAll: (key: K, data: T) => void;
+  register: (key: K, callback: (payload: T) => void) => () => void;
+  notifyFirst: (key: K, payload: T) => void;
+  notifyAll: (key: K, payload: T) => void;
   has: (key: K) => boolean;
   count: (key: K) => number;
   clear: (key: K) => void;
 }
 
-type WaiterMap<K, T> = Map<K, Array<(data: T) => void>>;
+type WaiterRegistry<K, T> = Map<K, Array<(payload: T) => void>>;
 
-function registerWaiter<K, T>(waiters: WaiterMap<K, T>, key: K, callback: (data: T) => void): () => void {
+function registerWaiter<K, T>(waiters: WaiterRegistry<K, T>, key: K, callback: (payload: T) => void): () => void {
   const current = waiters.get(key) || [];
   waiters.set(key, [...current, callback]);
 
@@ -29,12 +29,12 @@ function registerWaiter<K, T>(waiters: WaiterMap<K, T>, key: K, callback: (data:
   };
 }
 
-function notifyFirstWaiter<K, T>(waiters: WaiterMap<K, T>, key: K, data: T): void {
+function notifyFirstWaiter<K, T>(waiters: WaiterRegistry<K, T>, key: K, payload: T): void {
   const callbacks = waiters.get(key);
   if (!callbacks || callbacks.length === 0) return;
 
   const [first, ...rest] = callbacks;
-  first(data);
+  first(payload);
 
   if (rest.length === 0) {
     waiters.delete(key);
@@ -43,24 +43,24 @@ function notifyFirstWaiter<K, T>(waiters: WaiterMap<K, T>, key: K, data: T): voi
   }
 }
 
-function notifyAllWaiters<K, T>(waiters: WaiterMap<K, T>, key: K, data: T): void {
+function notifyAllWaiters<K, T>(waiters: WaiterRegistry<K, T>, key: K, payload: T): void {
   const callbacks = waiters.get(key);
   if (!callbacks) return;
 
   for (const callback of callbacks) {
-    callback(data);
+    callback(payload);
   }
 
   waiters.delete(key);
 }
 
 export function createWaiters<K, T>(): Waiters<K, T> {
-  const waiters: WaiterMap<K, T> = new Map();
+  const waiters: WaiterRegistry<K, T> = new Map();
 
   return {
     register: (key, callback) => registerWaiter(waiters, key, callback),
-    notifyFirst: (key, data) => notifyFirstWaiter(waiters, key, data),
-    notifyAll: (key, data) => notifyAllWaiters(waiters, key, data),
+    notifyFirst: (key, payload) => notifyFirstWaiter(waiters, key, payload),
+    notifyAll: (key, payload) => notifyAllWaiters(waiters, key, payload),
     has(key: K): boolean {
       const callbacks = waiters.get(key);
       return callbacks !== undefined && callbacks.length > 0;
@@ -74,13 +74,13 @@ export function createWaiters<K, T>(): Waiters<K, T> {
   };
 }
 
-export type WaitResult<T> = { ok: true; data: T } | { ok: false; reason: "timeout" };
+export type WaitResult<T> = { ok: true; payload: T } | { ok: false; reason: "timeout" };
 
 export function waitForResponse<K, T>(waiters: Waiters<K, T>, key: K, timeoutMs: number): Promise<WaitResult<T>> {
   return new Promise((resolve) => {
-    const cleanup = waiters.register(key, (data) => {
+    const cleanup = waiters.register(key, (payload) => {
       clearTimeout(timeoutId);
-      resolve({ ok: true, data });
+      resolve({ ok: true, payload });
     });
 
     const timeoutId = setTimeout(() => {

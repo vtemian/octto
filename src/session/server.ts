@@ -5,7 +5,7 @@ import * as v from "valibot";
 import { getHtmlBundle } from "@/ui";
 
 import type { SessionStore } from "./sessions";
-import { type WsClientMessage, WsClientMessageSchema } from "./types";
+import { WsClientMessageSchema } from "./types";
 
 const HTTP_BAD_REQUEST = 400;
 const HTTP_NOT_FOUND = 404;
@@ -56,7 +56,7 @@ function handleWsClose(ws: ServerWebSocket<WsData>, store: SessionStore): void {
 function handleWsMessage(ws: ServerWebSocket<WsData>, message: string | Buffer, store: SessionStore): void {
   const { sessionId } = ws.data;
 
-  let parsed: WsClientMessage;
+  let parsed: v.InferOutput<typeof WsClientMessageSchema>;
   try {
     const raw: unknown = JSON.parse(message.toString());
     const parseResult = v.safeParse(WsClientMessageSchema, raw);
@@ -70,7 +70,7 @@ function handleWsMessage(ws: ServerWebSocket<WsData>, message: string | Buffer, 
       );
       return;
     }
-    parsed = parseResult.output as WsClientMessage;
+    parsed = parseResult.output;
   } catch (error: unknown) {
     console.error("[octto] Failed to parse WebSocket message:", error);
     ws.send(

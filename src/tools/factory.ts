@@ -14,8 +14,9 @@ interface QuestionToolConfig<T> {
   toConfig: (args: T) => BaseConfig;
 }
 
-// Return type inferred to preserve generic parameter T across call sites
-export function createQuestionToolFactory(sessions: SessionStore) {
+export type QuestionToolBuilder = <T extends { session_id: string }>(config: QuestionToolConfig<T>) => OcttoTool;
+
+export function createQuestionToolFactory(sessions: SessionStore): QuestionToolBuilder {
   return function createQuestionTool<T extends { session_id: string }>(config: QuestionToolConfig<T>): OcttoTool {
     return tool({
       description: `${config.description}

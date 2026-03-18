@@ -1,5 +1,7 @@
 import type { ServerWebSocket } from "bun";
 
+import type * as v from "valibot";
+
 import { DEFAULT_ANSWER_TIMEOUT_MS } from "@/constants";
 import { generateQuestionId, generateSessionId } from "@/utils";
 
@@ -22,7 +24,7 @@ import {
   type StartSessionInput,
   type StartSessionOutput,
   WS_MESSAGES,
-  type WsClientMessage,
+  type WsClientMessageSchema,
   type WsServerMessage,
 } from "./types";
 import { createWaiters } from "./waiter";
@@ -42,7 +44,7 @@ export interface SessionStore {
   listQuestions: (sessionId?: string) => ListQuestionsOutput;
   handleWsConnect: (sessionId: string, ws: ServerWebSocket<unknown>) => void;
   handleWsDisconnect: (sessionId: string) => void;
-  handleWsMessage: (sessionId: string, message: WsClientMessage) => void;
+  handleWsMessage: (sessionId: string, message: v.InferOutput<typeof WsClientMessageSchema>) => void;
   getSession: (sessionId: string) => Session | undefined;
   cleanup: () => Promise<void>;
 }
@@ -385,7 +387,11 @@ function handleWsDisconnect(state: StoreState, sessionId: string): void {
   session.wsClient = undefined;
 }
 
-function handleWsMessage(state: StoreState, sessionId: string, message: WsClientMessage): void {
+function handleWsMessage(
+  state: StoreState,
+  sessionId: string,
+  message: v.InferOutput<typeof WsClientMessageSchema>,
+): void {
   if (message.type === WS_MESSAGES.CONNECTED) return;
 
   if (message.type !== WS_MESSAGES.RESPONSE) return;

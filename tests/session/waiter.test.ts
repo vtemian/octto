@@ -1,4 +1,3 @@
-// tests/session/waiter.test.ts
 import { beforeEach, describe, expect, it } from "bun:test";
 
 import { createWaiters, type Waiters, waitForResponse } from "../../src/session/waiter";
@@ -127,7 +126,7 @@ describe("waitForResponse", () => {
     setTimeout(() => waiters.notifyFirst("key1", "result"), 10);
 
     const result = await promise;
-    expect(result).toEqual({ ok: true, data: "result" });
+    expect(result).toEqual({ ok: true, payload: "result" });
   });
 
   it("should timeout if not notified in time", async () => {

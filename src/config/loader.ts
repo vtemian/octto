@@ -42,22 +42,22 @@ function formatValidationErrors(issues: v.BaseIssue<unknown>[]): string {
     .join("\n");
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function salvageValidAgents(parsed: Record<string, unknown>): OcttoConfig | null {
-  if (!("agents" in parsed)) {
+  if (!("agents" in parsed) || !isRecord(parsed.agents)) {
     console.warn("[octto] No valid agents found in config, using defaults");
     return null;
   }
 
   const rawAgents = parsed.agents;
-  if (typeof rawAgents !== "object" || rawAgents === null) {
-    console.warn("[octto] Invalid agents format, using defaults");
-    return null;
-  }
 
   const validAgents: OcttoConfig["agents"] = {};
   let hasValidAgent = false;
 
-  for (const [name, override] of Object.entries(rawAgents as Record<string, unknown>)) {
+  for (const [name, override] of Object.entries(rawAgents)) {
     if (!isAgentName(name)) {
       console.warn(`[octto] Unknown agent "${name}" - valid names: ${VALID_AGENT_NAMES.join(", ")}`);
       continue;
@@ -103,12 +103,12 @@ async function load(configDir?: string): Promise<OcttoConfig | null> {
   console.warn(`[octto] Config validation errors in ${configPath}:`);
   console.warn(formatValidationErrors(configValidation.issues));
 
-  if (typeof parsed !== "object" || parsed === null) {
+  if (!isRecord(parsed)) {
     console.warn("[octto] No valid agents found in config, using defaults");
     return null;
   }
 
-  return salvageValidAgents(parsed as Record<string, unknown>);
+  return salvageValidAgents(parsed);
 }
 
 export interface CustomConfig {

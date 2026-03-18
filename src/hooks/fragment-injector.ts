@@ -137,7 +137,6 @@ export async function createFragmentInjector(
   const projectFragments = await loadProjectFragments(ctx.projectDir);
   const merged = mergeFragments(globalFragments, projectFragments);
 
-  // Warn about unknown agents in both global and project fragments
   warnUnknownAgents(globalFragments);
   warnUnknownAgents(projectFragments);
 

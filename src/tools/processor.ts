@@ -65,7 +65,7 @@ function formatBranchContext(state: BrainstormState, branchId: string): string {
   return lines.join("\n");
 }
 
-function parseProbeResponse(parts: { type: string; [key: string]: unknown }[]): ProbeResult {
+export function parseProbeResponse(parts: { type: string; [key: string]: unknown }[]): ProbeResult {
   const responseText = parts
     .filter(
       (part): part is typeof part & { text: string } =>

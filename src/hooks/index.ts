@@ -1,4 +1,3 @@
-// src/hooks/index.ts
 export {
   createFragmentInjector,
   type FragmentInjectorContext,

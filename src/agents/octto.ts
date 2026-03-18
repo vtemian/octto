@@ -1,4 +1,3 @@
-// src/agents/octto.ts
 import type { AgentConfig } from "@opencode-ai/sdk";
 
 export const agent: AgentConfig = {

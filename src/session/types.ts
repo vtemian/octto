@@ -107,11 +107,11 @@ export interface AskCodeAnswer {
 }
 
 export interface AskImageAnswer {
-  images: Array<{ name: string; data: string; type: string }>;
+  images: Array<{ name: string; content: string; type: string }>;
 }
 
 export interface AskFileAnswer {
-  files: Array<{ name: string; data: string; type: string }>;
+  files: Array<{ name: string; content: string; type: string }>;
 }
 
 export interface ReviewAnswer {
@@ -302,6 +302,13 @@ export type WsServerMessage = WsQuestionMessage | WsCancelMessage | WsEndMessage
 export type WsClientMessage = WsResponseMessage | WsConnectedMessage;
 
 export const WsClientMessageSchema = v.variant("type", [
-  v.object({ type: v.literal("response"), id: v.string(), answer: v.any() }),
+  v.object({
+    type: v.literal("response"),
+    id: v.string(),
+    answer: v.pipe(
+      v.unknown(),
+      v.transform((input): Answer => input as Answer),
+    ),
+  }),
   v.object({ type: v.literal("connected") }),
 ]);

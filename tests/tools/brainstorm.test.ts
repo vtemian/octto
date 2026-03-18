@@ -18,7 +18,8 @@ describe("Brainstorm Tools", () => {
     tools = createBrainstormTools(sessions, undefined as any, tempDir);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await sessions.cleanup();
     rmSync(tempDir, { recursive: true, force: true });
   });
 

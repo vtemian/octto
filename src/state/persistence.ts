@@ -3,7 +3,41 @@ import { join } from "node:path";
 
 import * as v from "valibot";
 
+import type { Answer, BaseConfig, QuestionType } from "@/session";
+import { QUESTION_TYPES } from "@/session";
+
 import type { BrainstormState } from "./types";
+
+const BranchQuestionSchema = v.object({
+  id: v.string(),
+  type: v.pipe(
+    v.string(),
+    v.transform((input): QuestionType => {
+      if (QUESTION_TYPES.includes(input as QuestionType)) return input as QuestionType;
+      throw new Error(`Invalid question type: ${input}`);
+    }),
+  ),
+  text: v.string(),
+  config: v.pipe(
+    v.looseObject({}),
+    v.transform((input): BaseConfig => input),
+  ),
+  answer: v.optional(
+    v.pipe(
+      v.unknown(),
+      v.transform((input): Answer => input as Answer),
+    ),
+  ),
+  answeredAt: v.optional(v.number()),
+});
+
+const BranchSchema = v.object({
+  id: v.string(),
+  scope: v.string(),
+  status: v.union([v.literal("exploring"), v.literal("done")]),
+  questions: v.array(BranchQuestionSchema),
+  finding: v.nullable(v.string()),
+});
 
 const BrainstormStateSchema = v.object({
   session_id: v.string(),
@@ -11,7 +45,7 @@ const BrainstormStateSchema = v.object({
   request: v.string(),
   created_at: v.number(),
   updated_at: v.number(),
-  branches: v.record(v.string(), v.any()),
+  branches: v.record(v.string(), BranchSchema),
   branch_order: v.array(v.string()),
 });
 
@@ -46,7 +80,7 @@ function parseBrainstormState(content: string, sessionId: string): BrainstormSta
     console.error(`[octto] Invalid state file for session ${sessionId}:`, parseResult.issues);
     return null;
   }
-  return parseResult.output as BrainstormState;
+  return parseResult.output;
 }
 
 export function createStatePersistence(baseDir = ".brainstorm"): StatePersistence {

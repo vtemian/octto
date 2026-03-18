@@ -197,7 +197,7 @@ export interface AskImageResponse extends BaseResponse {
     filename: string;
     mimeType: string;
     /** Base64 encoded */
-    data: string;
+    content: string;
   }>;
   /** Alternative to upload */
   paths?: string[];
@@ -208,7 +208,7 @@ export interface AskFileResponse extends BaseResponse {
     filename: string;
     mimeType: string;
     /** Base64 encoded */
-    data: string;
+    content: string;
   }>;
   /** Alternative to upload */
   paths?: string[];

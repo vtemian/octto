@@ -1,5 +1,5 @@
 // tests/state/persistence.test.ts
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -53,6 +53,18 @@ describe("createStatePersistence", () => {
     it("should return null for non-existent session", async () => {
       const loaded = await persistence.load("ses_nonexistent");
       expect(loaded).toBeNull();
+    });
+
+    it("should return null for valid JSON with invalid schema", async () => {
+      const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+      // Write a valid JSON file that doesn't match BrainstormState schema
+      const filePath = join(testDir, "ses_corrupt.json");
+      await Bun.write(filePath, JSON.stringify({ not_a: "valid_state" }));
+
+      const loaded = await persistence.load("ses_corrupt");
+      expect(loaded).toBeNull();
+      expect(errorSpy).toHaveBeenCalled();
+      errorSpy.mockRestore();
     });
 
     it("should create directory if it does not exist", async () => {

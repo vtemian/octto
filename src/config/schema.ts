@@ -18,6 +18,7 @@ export const PortSchema = v.pipe(v.number(), v.integer(), v.minValue(0), v.maxVa
 export const FragmentsSchema = v.optional(v.record(v.picklist(Object.values(AGENTS)), v.array(v.string())));
 
 export const OcttoConfigSchema = v.object({
+  model: v.optional(v.string()),
   agents: v.optional(v.record(v.picklist(Object.values(AGENTS)), AgentOverrideSchema)),
   port: v.optional(PortSchema),
   fragments: FragmentsSchema,

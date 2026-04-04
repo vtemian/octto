@@ -104,9 +104,10 @@ Optional `~/.config/opencode/octto.json`:
 
 ```json
 {
+  "model": "anthropic/claude-sonnet-4",
   "port": 3000,
   "agents": {
-    "probe": { "model": "anthropic/claude-sonnet-4" }
+    "probe": { "model": "openai/gpt-4o" }
   }
 }
 ```
@@ -115,9 +116,12 @@ Optional `~/.config/opencode/octto.json`:
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
+| `model` | string | - | Override the model for **all** agents at once |
 | `port` | number | `0` (random) | Fixed port for the browser UI server |
-| `agents` | object | - | Override agent models/settings |
+| `agents` | object | - | Per-agent overrides (model, temperature, etc.) |
 | `fragments` | object | - | Custom instructions injected into agent prompts |
+
+> **Precedence**: per-agent `agents.<name>.model` > top-level `model` > built-in default
 
 ### Fragments
 

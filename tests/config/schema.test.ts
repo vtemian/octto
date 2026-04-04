@@ -6,6 +6,43 @@ import * as v from "valibot";
 import { FragmentsSchema, OcttoConfigSchema } from "../../src/config/schema";
 
 describe("OcttoConfigSchema", () => {
+  describe("top-level model field", () => {
+    it("should accept a top-level model string", () => {
+      const result = v.safeParse(OcttoConfigSchema, { model: "anthropic/claude-sonnet-4" });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.output.model).toBe("anthropic/claude-sonnet-4");
+      }
+    });
+
+    it("should allow config without top-level model (optional)", () => {
+      const result = v.safeParse(OcttoConfigSchema, {});
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.output.model).toBeUndefined();
+      }
+    });
+
+    it("should reject non-string model", () => {
+      const result = v.safeParse(OcttoConfigSchema, { model: 123 });
+      expect(result.success).toBe(false);
+    });
+
+    it("should accept model alongside agents overrides", () => {
+      const result = v.safeParse(OcttoConfigSchema, {
+        model: "anthropic/claude-sonnet-4",
+        agents: {
+          probe: { model: "openai/gpt-4o" },
+        },
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.output.model).toBe("anthropic/claude-sonnet-4");
+        expect(result.output.agents?.probe?.model).toBe("openai/gpt-4o");
+      }
+    });
+  });
+
   describe("port field", () => {
     it("should accept valid port number", () => {
       const result = v.safeParse(OcttoConfigSchema, { port: 3000 });

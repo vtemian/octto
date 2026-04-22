@@ -13,9 +13,8 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "types": ["bun-types"],
-    "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["./src/*"]
     }
   },
   "include": ["src/**/*"],

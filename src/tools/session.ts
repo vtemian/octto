@@ -1,6 +1,6 @@
 import { tool } from "@opencode-ai/plugin/tool";
 
-import type { SessionStore } from "@/session";
+import type { InitialQuestion, SessionStore } from "@/session";
 
 import type { OcttoTool, OcttoTools } from "./types";
 
@@ -46,14 +46,32 @@ const questionsSchema = tool.schema
   .array(
     tool.schema.object({
       type: tool.schema
-        .enum(["pick_one", "pick_many", "confirm", "ask_text", "show_options", "review_section", "thumbs", "slider"])
+        .enum([
+          "pick_one",
+          "pick_many",
+          "confirm",
+          "ask_text",
+          "show_options",
+          "review_section",
+          "thumbs",
+          "slider",
+          "rank",
+          "rate",
+          "ask_image",
+          "ask_file",
+          "ask_code",
+          "show_diff",
+          "show_plan",
+          "emoji_react",
+        ])
         .describe("Question type"),
-      config: tool.schema
-        .looseObject({
-          question: tool.schema.string().optional(),
-          context: tool.schema.string().optional(),
-        })
-        .describe("Question config (varies by type)"),
+      config: tool.schema.unknown().describe(`Question config (varies by type). Common properties:
+- question: string - The question text
+- context: string - Additional context
+- options: Array<{id: string, label: string, description?: string}> - For pick_one, pick_many, rank, rate
+- recommended: string - Recommended option id
+- min/max: number - For slider, rate
+- allowOther: boolean - Allow custom input for pick_one/pick_many`),
     }),
   )
   .describe("REQUIRED: Initial questions to display when browser opens. Must have at least 1.");
@@ -73,7 +91,8 @@ REQUIRED: You MUST provide at least 1 question. Will fail without questions.`,
       }
 
       try {
-        const session = await sessions.startSession({ title: args.title, questions: args.questions });
+        const initialQuestions = args.questions as unknown as InitialQuestion[];
+        const session = await sessions.startSession({ title: args.title, questions: initialQuestions });
         return formatSessionStarted(session);
       } catch (error: unknown) {
         return `Failed to start session: ${error instanceof Error ? error.message : String(error)}`;

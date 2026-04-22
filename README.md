@@ -2,6 +2,8 @@
 
 An interactive browser UI for AI brainstorming. Stop typing in terminals. Start clicking in browsers.
 
+> **About this Fork:** This fork fixes the `start_session` tool schema. The original version only defined `question` and `context` in the config object, causing the AI to omit important properties like `options` (needed for `pick_one`, `pick_many`, etc.). Now all config properties are supported. [See changes →](https://github.com/MoriNo23/octto/pull/1)
+
 
 
 https://github.com/user-attachments/assets/9ba8868d-16f3-4451-9b73-6b7e1fc54655

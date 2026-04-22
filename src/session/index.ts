@@ -9,6 +9,7 @@ export type {
   BaseConfig,
   ConfirmAnswer,
   EmojiReactAnswer,
+  InitialQuestion,
   PickManyAnswer,
   PickOneAnswer,
   QuestionAnswers,

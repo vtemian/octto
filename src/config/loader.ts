@@ -52,18 +52,22 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function salvageValidAgents(parsed: Record<string, unknown>): OcttoConfig | null {
-  if (!("agents" in parsed) || !isRecord(parsed.agents)) {
-    console.warn("[octto] No valid agents found in config, using defaults");
-    return null;
+function salvageModel(parsed: Record<string, unknown>): string | undefined {
+  if ("model" in parsed && typeof parsed.model === "string" && parsed.model.length > 0) {
+    return parsed.model;
   }
+  return undefined;
+}
 
-  const rawAgents = parsed.agents;
+function salvageAgentOverrides(parsed: Record<string, unknown>): OcttoConfig["agents"] | undefined {
+  if (!("agents" in parsed) || !isRecord(parsed.agents)) {
+    return undefined;
+  }
 
   const validAgents: OcttoConfig["agents"] = {};
   let hasValidAgent = false;
 
-  for (const [name, override] of Object.entries(rawAgents)) {
+  for (const [name, override] of Object.entries(parsed.agents)) {
     if (!isAgentName(name)) {
       console.warn(`[octto] Unknown agent "${name}" - valid names: ${VALID_AGENT_NAMES.join(", ")}`);
       continue;
@@ -79,13 +83,20 @@ function salvageValidAgents(parsed: Record<string, unknown>): OcttoConfig | null
     }
   }
 
-  if (!hasValidAgent) {
-    console.warn("[octto] No valid agent overrides found, using defaults");
-    return null;
+  return hasValidAgent ? validAgents : undefined;
+}
+
+function salvageValidConfig(parsed: Record<string, unknown>): OcttoConfig | null {
+  const model = salvageModel(parsed);
+  const agents = salvageAgentOverrides(parsed);
+
+  if (model || agents) {
+    console.warn("[octto] Partial config loaded - some overrides applied despite errors");
+    return { ...(model ? { model } : {}), ...(agents ? { agents } : {}) };
   }
 
-  console.warn("[octto] Partial config loaded - some overrides applied despite errors");
-  return { agents: validAgents };
+  console.warn("[octto] No valid overrides found in config, using defaults");
+  return null;
 }
 
 async function load(configDir?: string): Promise<OcttoConfig | null> {
@@ -114,12 +125,17 @@ async function load(configDir?: string): Promise<OcttoConfig | null> {
     return null;
   }
 
-  return salvageValidAgents(parsed);
+  return salvageValidConfig(parsed);
 }
 
 /**
  * Load user configuration and merge with plugin agents.
  * Returns merged agent configs with user overrides applied, and resolved port.
+ *
+ * Merge order (later wins):
+ *   1. Built-in agent defaults
+ *   2. Top-level `model` (applied to every agent)
+ *   3. Per-agent `agents.<name>` overrides
  */
 export async function loadCustomConfig(
   agents: Record<AgentName, AgentConfig>,
@@ -128,9 +144,18 @@ export async function loadCustomConfig(
   const config = await load(configDir);
 
   const mergedAgents = { ...agents };
+
+  // Apply top-level model to all agents first
+  if (config?.model) {
+    for (const name of Object.values(AGENTS)) {
+      mergedAgents[name] = { ...mergedAgents[name], model: config.model };
+    }
+  }
+
+  // Then apply per-agent overrides (these take precedence)
   for (const [name, override] of Object.entries(config?.agents ?? {})) {
     if (!isAgentName(name)) continue;
-    mergedAgents[name] = { ...agents[name], ...override };
+    mergedAgents[name] = { ...mergedAgents[name], ...override };
   }
 
   return {

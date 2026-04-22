@@ -43,7 +43,7 @@
     "url": "https://github.com/vtemian/octto.git"
   },
   "dependencies": {
-    "@opencode-ai/plugin": "1.0.223",
+    "@opencode-ai/plugin": "1.4.6",
     "valibot": "^1.2.0",
     "zod": "^4.3.5"
   },

@@ -68,10 +68,14 @@ export const QUESTION_TYPES = Object.values(QUESTIONS);
 
 export interface PickOneAnswer {
   selected: string;
+  /** Freetext supplied when `selected` is the reserved "other" id */
+  other?: string;
 }
 
 export interface PickManyAnswer {
   selected: string[];
+  /** Freetext supplied when `selected` contains the reserved "other" id */
+  other?: string;
 }
 
 export interface ConfirmAnswer {

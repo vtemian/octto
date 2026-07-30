@@ -33,7 +33,8 @@ function buildPickOne(createTool: ToolFactory): OcttoTool {
   return createTool<PickOneConfig & { session_id: string }>({
     type: "pick_one",
     description: `Ask user to select ONE option from a list.
-Response format: { selected: string } where selected is the chosen option id.`,
+Response format: { selected: string } where selected is the chosen option id.
+With allowOther, the user may answer "other": then selected is "other" and the freetext is in the other field.`,
     args: {
       question: tool.schema.string().describe(QUESTION_DESCRIPTION),
       options: optionsSchema,
@@ -54,7 +55,8 @@ function buildPickMany(createTool: ToolFactory): OcttoTool {
   return createTool<PickManyConfig & { session_id: string }>({
     type: "pick_many",
     description: `Ask user to select MULTIPLE options from a list.
-Response format: { selected: string[] } where selected is array of chosen option ids.`,
+Response format: { selected: string[] } where selected is array of chosen option ids.
+With allowOther, the user may add "other": then selected contains "other" and the freetext is in the other field.`,
     args: {
       question: tool.schema.string().describe(QUESTION_DESCRIPTION),
       options: optionsSchema,

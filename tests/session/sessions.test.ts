@@ -280,5 +280,46 @@ describe("createSessionStore", () => {
         expect(result2.question_id).toBe(q2_id);
       });
     });
+
+    describe("freetext answers", () => {
+      it("should deliver the other freetext of a pick_one answer to a blocked caller", async () => {
+        const { session_id } = await sessions.startSession({});
+        const { question_id } = sessions.pushQuestion(session_id, "pick_one", {
+          question: "Which datastore?",
+          options: [{ id: "redis", label: "Redis" }],
+          allowOther: true,
+        });
+
+        const wait = sessions.getAnswer({ question_id, block: true, timeout: 1000 });
+        sessions.handleWsMessage(session_id, {
+          type: "response",
+          id: question_id,
+          answer: { selected: "other", other: "SQLite with Litestream" },
+        });
+
+        const result = await wait;
+        expect(result.completed).toBe(true);
+        expect(result.response).toEqual({ selected: "other", other: "SQLite with Litestream" });
+      });
+
+      it("should deliver a pick_many answer mixing option ids with other freetext", async () => {
+        const { session_id } = await sessions.startSession({});
+        const { question_id } = sessions.pushQuestion(session_id, "pick_many", {
+          question: "Which caches?",
+          options: [{ id: "redis", label: "Redis" }],
+          allowOther: true,
+        });
+
+        const wait = sessions.getAnswer({ question_id, block: true, timeout: 1000 });
+        sessions.handleWsMessage(session_id, {
+          type: "response",
+          id: question_id,
+          answer: { selected: ["redis", "other"], other: "Dragonfly" },
+        });
+
+        const result = await wait;
+        expect(result.response).toEqual({ selected: ["redis", "other"], other: "Dragonfly" });
+      });
+    });
   });
 });

@@ -7,6 +7,10 @@ on:
 
 jobs:
   check:
+    # Dependabot branches run the gate in dependabot-lockfile.yml, after the
+    # lockfile is regenerated. Running it here too would always fail on the
+    # frozen lockfile.
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
 
     steps:

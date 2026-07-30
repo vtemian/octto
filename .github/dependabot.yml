@@ -6,6 +6,11 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
+    ignore:
+      # TypeScript 7's native API breaks ts-api-utils, which typescript-eslint
+      # and eslint-plugin-sonarjs depend on, so ESLint crashes on load.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /

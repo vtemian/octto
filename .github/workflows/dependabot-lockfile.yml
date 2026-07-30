@@ -1,0 +1,45 @@
+name: Dependabot Lockfile
+
+# Dependabot's npm ecosystem updates package.json but cannot write bun.lock,
+# which makes `bun install --frozen-lockfile` in the quality gate reject the
+# mismatch. Regenerate the lockfile here, then run the gate in the same job:
+# a GITHUB_TOKEN push does not retrigger workflows, so the pushed commit would
+# otherwise never be verified.
+
+on:
+  push:
+    branches: ["dependabot/**"]
+
+permissions:
+  contents: write
+
+jobs:
+  lockfile:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Resolve dependencies
+        run: bun install
+
+      - name: Sync lockfile
+        run: |
+          if git diff --quiet bun.lock; then
+            echo "bun.lock already in sync"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(deps): sync bun.lock" bun.lock
+          git push
+
+      - name: Quality gate
+        run: bun run check
+
+      - name: Build
+        run: bun run build

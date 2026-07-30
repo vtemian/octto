@@ -7,6 +7,7 @@ import { createResponseTools } from "./responses";
 import { createSessionTools } from "./session";
 import type { OcttoTools, OpencodeClient } from "./types";
 
+export { outputText } from "./output";
 export type { OcttoTool, OcttoTools, OpencodeClient } from "./types";
 
 export function createOcttoTools(sessions: SessionStore, client: OpencodeClient): OcttoTools {

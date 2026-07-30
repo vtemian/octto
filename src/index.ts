@@ -5,13 +5,13 @@ import { loadCustomConfig } from "@/config";
 import { createFragmentInjector, getAgentSystemPromptPrefix, warnUnknownAgents } from "@/hooks";
 import { createSessionStore } from "@/session";
 import type { OcttoTool } from "@/tools";
-import { createOcttoTools } from "@/tools";
+import { createOcttoTools, outputText } from "@/tools";
 
 function wrapWithTracking(tool: OcttoTool, tracked: Map<string, Set<string>>): void {
   const originalExecute = tool.execute;
   tool.execute = async (args, toolCtx) => {
     const executeOutput = await originalExecute(args, toolCtx);
-    const match = executeOutput.match(/ses_[a-z0-9]+/);
+    const match = outputText(executeOutput).match(/ses_[a-z0-9]+/);
 
     if (match && toolCtx.sessionID) {
       if (!tracked.has(toolCtx.sessionID)) {

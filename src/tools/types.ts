@@ -1,4 +1,4 @@
-import type { ToolContext } from "@opencode-ai/plugin/tool";
+import type { ToolContext, ToolResult } from "@opencode-ai/plugin/tool";
 import type { createOpencodeClient } from "@opencode-ai/sdk";
 
 // Using `any` to avoid exposing zod types in declaration files.
@@ -9,7 +9,7 @@ export interface OcttoTool {
   // biome-ignore lint/suspicious/noExplicitAny: zod schema type not exposed in declaration files
   args: any;
   // biome-ignore lint/suspicious/noExplicitAny: zod schema type not exposed in declaration files
-  execute: (args: any, context: ToolContext) => Promise<string>;
+  execute: (args: any, context: ToolContext) => Promise<ToolResult>;
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 

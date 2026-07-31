@@ -481,6 +481,10 @@ export function getHtmlBundle(): string {
       color: var(--foreground-muted);
     }
 
+    .other-input {
+      margin-top: 0.5rem;
+    }
+
     .feedback-input {
       margin-top: 1rem;
     }
@@ -913,9 +917,30 @@ export function getHtmlBundle(): string {
         if (opt.description) html += '<div class="option-desc">' + escapeHtml(opt.description) + '</div>';
         html += '</div></label>';
       }
+      if (q.config.allowOther) html += renderOtherOption(q, 'radio');
       html += '</div>';
       html += '<div class="btn-group"><button onclick="submitPickOne(\\'' + q.id + '\\')" class="btn btn-primary">Submit</button></div>';
       return html;
+    }
+
+    function renderOtherOption(q, inputType) {
+      let html = '<label class="option">';
+      html += '<input type="' + inputType + '" name="pick_' + q.id + '" id="otherchoice_' + q.id + '" value="other">';
+      html += '<div class="option-content"><div class="option-label">Other</div></div>';
+      html += '</label>';
+      // Kept outside the label: nesting it would make a click activate the label's control instead of focusing the field.
+      html += '<input type="text" class="input other-input" id="other_' + q.id + '" placeholder="Type your own answer" onfocus="selectOther(\\'' + q.id + '\\')">';
+      return html;
+    }
+
+    function selectOther(questionId) {
+      const choice = document.getElementById('otherchoice_' + questionId);
+      if (choice) choice.checked = true;
+    }
+
+    function readOther(questionId) {
+      const input = document.getElementById('other_' + questionId);
+      return input ? input.value.trim() : '';
     }
     
     function renderPickMany(q) {
@@ -929,6 +954,7 @@ export function getHtmlBundle(): string {
         if (opt.description) html += '<div class="option-desc">' + escapeHtml(opt.description) + '</div>';
         html += '</div></label>';
       }
+      if (q.config.allowOther) html += renderOtherOption(q, 'checkbox');
       html += '</div>';
       html += '<div class="btn-group"><button onclick="submitPickMany(\\'' + q.id + '\\')" class="btn btn-primary">Submit</button></div>';
       return html;
@@ -1197,11 +1223,29 @@ export function getHtmlBundle(): string {
         showError(questionId, 'Please select an option');
         return;
       }
+      if (selected.value === 'other') {
+        const other = readOther(questionId);
+        if (!other) {
+          showError(questionId, 'Please describe your other answer');
+          return;
+        }
+        submitAnswer(questionId, { selected: 'other', other });
+        return;
+      }
       submitAnswer(questionId, { selected: selected.value });
     }
-    
+
     function submitPickMany(questionId) {
       const selected = Array.from(document.querySelectorAll('input[name="pick_' + questionId + '"]:checked')).map(el => el.value);
+      if (selected.includes('other')) {
+        const other = readOther(questionId);
+        if (!other) {
+          showError(questionId, 'Please describe your other answer');
+          return;
+        }
+        submitAnswer(questionId, { selected, other });
+        return;
+      }
       submitAnswer(questionId, { selected });
     }
     

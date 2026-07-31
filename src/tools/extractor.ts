@@ -1,3 +1,4 @@
+import { OTHER_OPTION_ID } from "@/constants";
 import type { Answer, QuestionAnswers, QuestionType } from "@/session";
 import { QUESTIONS } from "@/session";
 
@@ -16,11 +17,15 @@ function truncateText(text: string): string {
 // eslint-disable-next-line max-lines-per-function -- single switch dispatch over all question types
 export function extractAnswerSummary(type: QuestionType, answer: Answer): string {
   switch (type) {
-    case QUESTIONS.PICK_ONE:
-      return typedAnswer(QUESTIONS.PICK_ONE, answer).selected;
+    case QUESTIONS.PICK_ONE: {
+      const picked = typedAnswer(QUESTIONS.PICK_ONE, answer);
+      return picked.selected === OTHER_OPTION_ID && picked.other ? picked.other : picked.selected;
+    }
 
-    case QUESTIONS.PICK_MANY:
-      return typedAnswer(QUESTIONS.PICK_MANY, answer).selected.join(", ");
+    case QUESTIONS.PICK_MANY: {
+      const picked = typedAnswer(QUESTIONS.PICK_MANY, answer);
+      return picked.selected.map((id) => (id === OTHER_OPTION_ID && picked.other ? picked.other : id)).join(", ");
+    }
 
     case QUESTIONS.CONFIRM:
       return typedAnswer(QUESTIONS.CONFIRM, answer).choice;

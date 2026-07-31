@@ -14,6 +14,21 @@ describe("extractAnswerSummary", () => {
     expect(result).toBe("a, b, c");
   });
 
+  it("should extract the freetext when pick_one is answered with other", () => {
+    const result = extractAnswerSummary("pick_one", { selected: "other", other: "use Postgres instead" });
+    expect(result).toBe("use Postgres instead");
+  });
+
+  it("should extract the freetext alongside selections when pick_many includes other", () => {
+    const result = extractAnswerSummary("pick_many", { selected: ["redis", "other"], other: "also NATS" });
+    expect(result).toBe("redis, also NATS");
+  });
+
+  it("should ignore a stray other field when other was not selected", () => {
+    const result = extractAnswerSummary("pick_one", { selected: "option_a", other: "leftover" });
+    expect(result).toBe("option_a");
+  });
+
   it("should extract confirm answer", () => {
     const result = extractAnswerSummary("confirm", { choice: "yes" });
     expect(result).toBe("yes");

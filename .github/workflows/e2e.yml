@@ -5,8 +5,9 @@ on:
   workflow_dispatch:
     inputs:
       live_model:
-        description: "Run the live-model tier with this model (e.g. anthropic/claude-sonnet-5)"
+        description: "Model for the live tier"
         required: false
+        default: "opencode/deepseek-v4-flash-free"
         type: string
 
 jobs:
@@ -36,16 +37,20 @@ jobs:
       - name: Build harness
         run: docker build -f e2e/Dockerfile -t octto-e2e .
 
+      # OPENCODE_AUTH_JSON is the contents of ~/.local/share/opencode/auth.json.
+      # The default model is free, so this costs nothing to run.
       - name: Run live tier
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENCODE_AUTH_JSON: ${{ secrets.OPENCODE_AUTH_JSON }}
           LIVE_MODEL: ${{ inputs.live_model }}
         run: |
-          if [ -z "${ANTHROPIC_API_KEY}" ]; then
-            echo "No ANTHROPIC_API_KEY secret configured; skipping live tier."
+          if [ -z "${OPENCODE_AUTH_JSON}" ]; then
+            echo "No OPENCODE_AUTH_JSON secret configured; skipping live tier."
             exit 0
           fi
+          printf '%s' "${OPENCODE_AUTH_JSON}" > "${RUNNER_TEMP}/auth.json"
           docker run --rm \
-            -e ANTHROPIC_API_KEY \
+            -v "${RUNNER_TEMP}/auth.json:/auth.json:ro" \
+            -e OCTTO_E2E_AUTH_FILE=/auth.json \
             -e OCTTO_E2E_LIVE_MODEL="${LIVE_MODEL}" \
             octto-e2e

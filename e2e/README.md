@@ -26,9 +26,17 @@ tier is for.
 ## Live tier
 
 ```bash
-docker run --rm -e ANTHROPIC_API_KEY \
-  -e OCTTO_E2E_LIVE_MODEL=anthropic/claude-sonnet-5 octto-e2e
+docker run --rm \
+  -v "$HOME/.local/share/opencode/auth.json:/auth.json:ro" \
+  -e OCTTO_E2E_AUTH_FILE=/auth.json \
+  -e OCTTO_E2E_LIVE_MODEL=opencode/deepseek-v4-flash-free \
+  octto-e2e
 ```
+
+The default model is a **free** opencode zen model, so this tier costs nothing. Verified
+locally: passes in ~17s. Credentials are copied into the isolated `HOME`, never logged.
+Any model works; free ones are less precise about optional arguments, so the spec asserts
+follow-through rather than a particular question shape.
 
 Same container, real provider, no script: a real model is asked to run the loop, and
 the spec checks it follows through *unprompted* once the answer lands. That is the

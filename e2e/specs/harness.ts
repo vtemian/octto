@@ -5,7 +5,7 @@
  * the browser and the websocket round-trip. The model is a scripted stub so a
  * run is deterministic and free.
  */
-import { mkdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const READY_POLL_MS = 100;
@@ -95,6 +95,15 @@ export function writeLiveConfig(home: string, pluginPaths: readonly string[], mo
 
   const config = { $schema: "https://opencode.ai/config.json", model, plugin: [...pluginPaths] };
   writeFileSync(join(dir, "opencode.json"), JSON.stringify(config, null, 2));
+
+  // Providers that store credentials on disk (opencode zen) need them inside the
+  // isolated HOME. The file is copied, never read or logged.
+  const authSource = process.env.OCTTO_E2E_AUTH_FILE;
+  if (!authSource || !existsSync(authSource)) return;
+
+  const dataDir = join(home, ".local", "share", "opencode");
+  mkdirSync(dataDir, { recursive: true });
+  copyFileSync(authSource, join(dataDir, "auth.json"));
 }
 
 export function spawnOpencode(home: string, agent: string, message: string): Bun.Subprocess {

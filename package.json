@@ -20,13 +20,14 @@
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "bun run clean && bun run check && bun run build",
-    "test": "bun test",
-    "test:watch": "bun test --watch",
+    "test": "bun test tests",
+    "test:watch": "bun test tests --watch",
     "format": "biome format --write .",
     "lint": "biome lint . && eslint .",
     "lint:biome": "biome lint .",
     "lint:eslint": "eslint .",
-    "check": "biome check . && eslint . && bun run typecheck && bun test"
+    "check": "biome check . && eslint . && bun run typecheck && bun test tests",
+    "test:e2e": "docker build -f e2e/Dockerfile -t octto-e2e . && docker run --rm octto-e2e"
   },
   "keywords": [
     "opencode",

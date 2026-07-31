@@ -7,8 +7,8 @@ import { join } from "node:path";
 import { type CdpSession, connect, waitForTarget, waitInPage } from "./cdp";
 import {
   cdpPort,
-  collectRun,
   octtoPort,
+  readUntil,
   type StubHandle,
   spawnOpencode,
   startStub,
@@ -20,6 +20,7 @@ const SCRIPT = join(import.meta.dir, "..", "scripts", "allow-other.json");
 const FREETEXT = "SQLite with Litestream";
 const TAB_TIMEOUT_MS = 60_000;
 const RENDER_TIMEOUT_MS = 30_000;
+const RUN_TIMEOUT_MS = 90_000;
 
 describe("octto inside a real opencode session", () => {
   let stub: StubHandle;
@@ -69,10 +70,13 @@ describe("octto inside a real opencode session", () => {
 
     expect(submitted).toBe(true);
 
-    const { stdout, exitCode } = await collectRun(run);
+    // The freetext must come back through the tool result the agent sees.
+    const stdout = await readUntil(run, [FREETEXT, "Answer Received"], RUN_TIMEOUT_MS);
 
-    expect(exitCode).toBe(0);
     expect(stdout).toContain(FREETEXT);
-    expect(stdout).toContain("E2E_DONE");
+    // The event stream is JSON-escaped, so compare against a normalised copy.
+    const unescaped = stdout.replace(/\\+"/g, '"');
+    expect(unescaped).toContain(`"selected": "other"`);
+    expect(unescaped).toContain(`"other": "${FREETEXT}"`);
   }, 180_000);
 });

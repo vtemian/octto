@@ -12,6 +12,7 @@ const READY_POLL_MS = 100;
 const DEFAULT_STUB_PORT = 8787;
 const DEFAULT_OCTTO_PORT = 7777;
 const DEFAULT_CDP_PORT = 9222;
+const OUTPUT_TAIL_CHARS = 1500;
 const READY_TIMEOUT_MS = 30_000;
 
 export interface StubHandle {
@@ -84,12 +85,6 @@ export function writeOpencodeConfig(home: string, pluginPaths: readonly string[]
   writeFileSync(join(dir, "opencode.json"), JSON.stringify(config, null, 2));
 }
 
-export interface OpencodeRun {
-  readonly exitCode: number;
-  readonly stdout: string;
-  readonly stderr: string;
-}
-
 export function spawnOpencode(home: string, agent: string, message: string): Bun.Subprocess {
   return Bun.spawn(
     ["opencode", "run", "--format", "json", "--auto", "--agent", agent, "--log-level", "ERROR", message],
@@ -102,11 +97,51 @@ export function spawnOpencode(home: string, agent: string, message: string): Bun
   );
 }
 
-export async function collectRun(proc: Bun.Subprocess): Promise<OpencodeRun> {
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout as ReadableStream).text(),
-    new Response(proc.stderr as ReadableStream).text(),
-    proc.exited,
-  ]);
-  return { exitCode, stdout, stderr };
+/**
+ * Reads the event stream until every marker has appeared, then stops the run.
+ *
+ * Waiting on process exit is not reliable here: octto keeps an HTTP server
+ * alive for the session, so the markers are the real completion signal.
+ */
+async function pump(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  markers: readonly string[],
+  deadline: number,
+  onChunk: (text: string) => string,
+): Promise<boolean> {
+  const decoder = new TextDecoder();
+
+  while (Date.now() < deadline) {
+    // A bare read() blocks forever once the stream goes quiet, which would
+    // strand the deadline check at the top of this loop.
+    const next: ReadableStreamReadResult<Uint8Array> | null = await Promise.race([
+      reader.read(),
+      Bun.sleep(Math.max(0, deadline - Date.now())).then(() => null),
+    ]);
+    if (!next) return false;
+
+    const seen = onChunk(next.value ? decoder.decode(next.value, { stream: true }) : "");
+    if (markers.every((m) => seen.includes(m))) return true;
+    if (next.done) return false;
+  }
+  return false;
+}
+
+export async function readUntil(proc: Bun.Subprocess, markers: readonly string[], timeoutMs: number): Promise<string> {
+  const reader = (proc.stdout as ReadableStream<Uint8Array>).getReader();
+  let seen = "";
+  const append = (text: string): string => {
+    seen += text;
+    return seen;
+  };
+
+  try {
+    if (await pump(reader, markers, Date.now() + timeoutMs, append)) return seen;
+  } finally {
+    reader.releaseLock();
+    proc.kill();
+  }
+
+  const missing = markers.filter((m) => !seen.includes(m));
+  throw new Error(`Never saw ${JSON.stringify(missing)} in opencode output. Got:\n${seen.slice(-OUTPUT_TAIL_CHARS)}`);
 }

@@ -20,8 +20,23 @@ never opens, UI stops rendering a field, answers stop reaching the agent) withou
 flakiness and cost of a live model.
 
 **It cannot catch prompt-adherence bugs**, where the model simply fails to make the
-next call. Issue #7's follow-up bug is exactly that class, so a live-model tier is
-still needed to guard it.
+next call. Issue #7's follow-up bug is exactly that class, which is what the second
+tier is for.
+
+## Live tier
+
+```bash
+docker run --rm -e ANTHROPIC_API_KEY \
+  -e OCTTO_E2E_LIVE_MODEL=anthropic/claude-sonnet-5 octto-e2e
+```
+
+Same container, real provider, no script: a real model is asked to run the loop, and
+the spec checks it follows through *unprompted* once the answer lands. That is the
+only way to catch the #7 class of bug.
+
+Skipped when `OCTTO_E2E_LIVE_MODEL` is unset, so the default suite stays free and
+deterministic. In CI it is `workflow_dispatch` only, and exits cleanly rather than
+failing when no key is configured.
 
 ## Scripts
 

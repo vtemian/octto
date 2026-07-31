@@ -1,0 +1,51 @@
+name: End-to-end
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      live_model:
+        description: "Run the live-model tier with this model (e.g. anthropic/claude-sonnet-5)"
+        required: false
+        type: string
+
+jobs:
+  scripted:
+    # The scripted tier is deterministic and free, so it runs on every PR.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build harness
+        run: docker build -f e2e/Dockerfile -t octto-e2e .
+
+      - name: Run scripted tier
+        run: docker run --rm octto-e2e
+
+  live:
+    # Costs money and needs a real model, so it is manual only and skips
+    # without a key rather than failing.
+    if: github.event_name == 'workflow_dispatch' && inputs.live_model != ''
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build harness
+        run: docker build -f e2e/Dockerfile -t octto-e2e .
+
+      - name: Run live tier
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          LIVE_MODEL: ${{ inputs.live_model }}
+        run: |
+          if [ -z "${ANTHROPIC_API_KEY}" ]; then
+            echo "No ANTHROPIC_API_KEY secret configured; skipping live tier."
+            exit 0
+          fi
+          docker run --rm \
+            -e ANTHROPIC_API_KEY \
+            -e OCTTO_E2E_LIVE_MODEL="${LIVE_MODEL}" \
+            octto-e2e

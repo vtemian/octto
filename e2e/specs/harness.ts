@@ -85,6 +85,18 @@ export function writeOpencodeConfig(home: string, pluginPaths: readonly string[]
   writeFileSync(join(dir, "opencode.json"), JSON.stringify(config, null, 2));
 }
 
+/**
+ * Config for the live tier: a real provider instead of the scripted stub.
+ * Credentials come from the ambient environment, never from a file we write.
+ */
+export function writeLiveConfig(home: string, pluginPaths: readonly string[], model: string): void {
+  const dir = join(home, ".config", "opencode");
+  mkdirSync(dir, { recursive: true });
+
+  const config = { $schema: "https://opencode.ai/config.json", model, plugin: [...pluginPaths] };
+  writeFileSync(join(dir, "opencode.json"), JSON.stringify(config, null, 2));
+}
+
 export function spawnOpencode(home: string, agent: string, message: string): Bun.Subprocess {
   return Bun.spawn(
     ["opencode", "run", "--format", "json", "--auto", "--agent", agent, "--log-level", "ERROR", message],

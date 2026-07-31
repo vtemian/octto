@@ -29,9 +29,19 @@ const branchesSchema = tool.schema
   )
   .describe("Branches to explore");
 
+/** Why answer collection stopped, so an unfinished session can explain itself to the agent. */
+const COLLECTION_STOPS = {
+  COMPLETE: "complete",
+  NO_ANSWER_WITHIN_TIMEOUT: "no_answer_within_timeout",
+  ITERATION_CAP: "iteration_cap",
+} as const;
+
+type CollectionStop = (typeof COLLECTION_STOPS)[keyof typeof COLLECTION_STOPS];
+
 interface CollectionResult {
   state: BrainstormState | null;
   allComplete: boolean;
+  stoppedBecause: CollectionStop;
 }
 
 function enqueueAnswerProcessing(
@@ -113,9 +123,13 @@ async function collectAnswers(
   client: OpencodeClient,
 ): Promise<CollectionResult> {
   const pending: Promise<void>[] = [];
+  let stoppedBecause: CollectionStop = COLLECTION_STOPS.ITERATION_CAP;
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
-    if (await stateStore.isSessionComplete(sessionId)) break;
+    if (await stateStore.isSessionComplete(sessionId)) {
+      stoppedBecause = COLLECTION_STOPS.COMPLETE;
+      break;
+    }
 
     const answer = await sessions.getNextAnswer({
       session_id: browserSessionId,
@@ -124,7 +138,10 @@ async function collectAnswers(
     });
 
     const action = await processOneAnswer(answer, pending, stateStore, sessions, sessionId, browserSessionId, client);
-    if (action === "break") break;
+    if (action === "break") {
+      stoppedBecause = COLLECTION_STOPS.NO_ANSWER_WITHIN_TIMEOUT;
+      break;
+    }
   }
 
   await Promise.all(pending);
@@ -134,7 +151,7 @@ async function collectAnswers(
     stateStore.isSessionComplete(sessionId),
   ]);
 
-  return { state, allComplete };
+  return { state, allComplete, stoppedBecause };
 }
 
 interface ReviewSection {
@@ -188,14 +205,19 @@ async function waitForReviewApproval(sessions: SessionStore, browserSessionId: s
   };
 }
 
-function formatInProgressResult(state: BrainstormState): string {
+function formatInProgressResult(state: BrainstormState, stoppedBecause: CollectionStop): string {
   const branches = state.branch_order.map((id) => formatBranchStatus(state.branches[id])).join("\n");
+  const reason =
+    stoppedBecause === COLLECTION_STOPS.ITERATION_CAP
+      ? `Collected ${MAX_ITERATIONS} answers in one call, the per-call limit.`
+      : "No answer arrived within the wait window; the user is still thinking.";
   return `<brainstorm_in_progress>
   <request>${state.request}</request>
   <branches>
 ${branches}
   </branches>
-  <next_action>Call await_brainstorm_complete again to continue</next_action>
+  <reason>${reason}</reason>
+  <next_action>The brainstorm is NOT finished and no branch was abandoned. Call await_brainstorm_complete again immediately with the same ids. Do not summarize, do not write the design document, and do not ask the user anything.</next_action>
 </brainstorm_in_progress>`;
 }
 
@@ -289,7 +311,7 @@ function buildCreateBrainstormTool(store: StateStore, sessions: SessionStore): O
   <branches>
 ${branchesXml}
   </branches>
-  <next_action>Call get_next_answer(session_id="${browserSession.session_id}", block=true)</next_action>
+  <next_action>Call await_brainstorm_complete(session_id="${sessionId}", browser_session_id="${browserSession.session_id}"). Do not loop on get_next_answer yourself: it does not record findings into branch state.</next_action>
 </brainstorm_created>`;
     },
   });
@@ -359,7 +381,7 @@ This is the recommended way to run a brainstorm - just create_brainstorm then aw
       browser_session_id: tool.schema.string().describe("Browser session ID (for collecting answers)"),
     },
     execute: async (args) => {
-      const { state, allComplete } = await collectAnswers(
+      const { state, allComplete, stoppedBecause } = await collectAnswers(
         store,
         sessions,
         args.session_id,
@@ -368,7 +390,7 @@ This is the recommended way to run a brainstorm - just create_brainstorm then aw
       );
 
       if (!state) return "<error>Session lost</error>";
-      if (!allComplete) return formatInProgressResult(state);
+      if (!allComplete) return formatInProgressResult(state, stoppedBecause);
 
       const sections = buildReviewSections(state);
 

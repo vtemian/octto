@@ -143,7 +143,12 @@ export async function loadCustomConfig(
 ): Promise<CustomConfig> {
   const config = await load(configDir);
 
+  // Copy each agent, not just the outer record: callers prefix prompts in place,
+  // and a shallow copy would mutate the shared built-in definitions.
   const mergedAgents = { ...agents };
+  for (const name of Object.values(AGENTS)) {
+    mergedAgents[name] = { ...mergedAgents[name] };
+  }
 
   // Apply top-level model to all agents first
   if (config?.model) {

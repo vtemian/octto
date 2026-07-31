@@ -1,4 +1,5 @@
 import type { Plugin } from "@opencode-ai/plugin";
+import type { AgentConfig } from "@opencode-ai/sdk";
 
 import { AGENTS, agents } from "@/agents";
 import { loadCustomConfig } from "@/config";
@@ -6,6 +7,26 @@ import { createFragmentInjector, getAgentSystemPromptPrefix, warnUnknownAgents }
 import { createSessionStore } from "@/session";
 import type { OcttoTool } from "@/tools";
 import { createOcttoTools, outputText } from "@/tools";
+
+/**
+ * Layers octto's agents onto whatever the host resolved so far.
+ *
+ * Merges per agent rather than replacing the entry, so keys other plugins set
+ * (permissions, for example) survive. Each entry is a fresh object: handing out
+ * our own would let another plugin's in-place mutation reach octto's state and
+ * persist across config resolutions.
+ */
+type ResolvedAgents = Record<string, AgentConfig | undefined>;
+
+function mergeAgents(existing: ResolvedAgents | undefined, ours: Record<string, AgentConfig>): ResolvedAgents {
+  const merged: ResolvedAgents = { ...existing };
+
+  for (const [name, agent] of Object.entries(ours)) {
+    merged[name] = { ...merged[name], ...agent };
+  }
+
+  return merged;
+}
 
 function wrapWithTracking(tool: OcttoTool, tracked: Map<string, Set<string>>): void {
   const originalExecute = tool.execute;
@@ -46,7 +67,7 @@ const Octto: Plugin = async ({ client, directory }) => {
     tool: tools,
 
     config: async (config) => {
-      config.agent = { ...config.agent, ...customConfig.agents };
+      config.agent = mergeAgents(config.agent, customConfig.agents);
     },
 
     event: async ({ event }) => {

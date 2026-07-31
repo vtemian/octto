@@ -6,6 +6,7 @@ import { join } from "node:path";
 
 import { createSessionStore } from "../../src/session/sessions";
 import { createBrainstormTools } from "../../src/tools/brainstorm";
+import { outputText } from "../../src/tools/output";
 
 describe("Brainstorm Tools", () => {
   let sessions: ReturnType<typeof createSessionStore>;
@@ -44,6 +45,31 @@ describe("Brainstorm Tools", () => {
 
       expect(result).toContain("ses_");
       expect(result).toContain("services");
+    });
+
+    it("should point the agent at await_brainstorm_complete rather than a manual answer loop", async () => {
+      const result = outputText(
+        await tools.create_brainstorm.execute(
+          {
+            request: "Add healthcheck",
+            branches: [
+              {
+                id: "services",
+                scope: "Which services to monitor",
+                initial_question: {
+                  type: "ask_text",
+                  config: { question: "What services?" },
+                },
+              },
+            ],
+          },
+          {} as any,
+        ),
+      );
+
+      const nextAction = result.slice(result.indexOf("<next_action>"), result.indexOf("</next_action>"));
+      expect(nextAction).toContain("await_brainstorm_complete");
+      expect(nextAction).not.toContain("Call get_next_answer");
     });
   });
 });

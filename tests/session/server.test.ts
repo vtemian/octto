@@ -121,4 +121,18 @@ describe("Server WebSocket error handling", () => {
     expect(session).toBeDefined();
     expect(session!.port).toBeGreaterThan(0);
   });
+
+  it("should resolve endSession even while a browser socket is still open", async () => {
+    const ws = new WebSocket(`${url.replace("http", "ws")}/ws`);
+    await new Promise<void>((resolve) => {
+      ws.onopen = () => resolve();
+    });
+
+    const outcome = await Promise.race([
+      sessions.endSession(sessionId).then(() => "resolved" as const),
+      new Promise<"hung">((resolve) => setTimeout(() => resolve("hung"), 2000)),
+    ]);
+
+    expect(outcome).toBe("resolved");
+  });
 });

@@ -80,18 +80,18 @@ describe("Brainstorm Tools", () => {
       await stateStore.createSession("ses_stalled", "req", [{ id: "b1", scope: "scope one" }]);
       const browser = await sessions.startSession({});
 
-      const startedAt = performance.now();
       const output = outputText(
         await tools.await_brainstorm_complete.execute(
           { session_id: "ses_stalled", browser_session_id: browser.session_id },
           {} as any,
         ),
       );
-      const elapsed = performance.now() - startedAt;
 
+      // The stall is observable in the message, not the clock: the old loop spun
+      // through all 50 iterations just as fast and then told the agent to retry.
       expect(output).not.toContain("Collected 50 answers");
+      expect(output).toContain("cannot progress on its own");
       expect(output).toContain("end_brainstorm");
-      expect(elapsed).toBeLessThan(1000);
     });
   });
 });

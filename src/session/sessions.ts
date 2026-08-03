@@ -129,7 +129,8 @@ async function endSession(state: StoreState, sessionId: string): Promise<EndSess
   }
 
   if (session.server) {
-    await session.server.stop();
+    // Without closeActiveConnections the promise never settles while the UI socket is attached.
+    await session.server.stop(true);
   }
 
   for (const questionId of session.questions.keys()) {

@@ -121,4 +121,49 @@ describe("Server WebSocket error handling", () => {
     expect(session).toBeDefined();
     expect(session!.port).toBeGreaterThan(0);
   });
+
+  it("should resolve endSession even while a browser socket is still open", async () => {
+    const ws = new WebSocket(`${url.replace("http", "ws")}/ws`);
+    await new Promise<void>((resolve) => {
+      ws.onopen = () => resolve();
+    });
+
+    const outcome = await Promise.race([
+      sessions.endSession(sessionId).then(() => "resolved" as const),
+      new Promise<"hung">((resolve) => setTimeout(() => resolve("hung"), 2000)),
+    ]);
+
+    expect(outcome).toBe("resolved");
+  });
+
+  it("should bind to loopback only", () => {
+    const session = sessions.getSession(sessionId);
+
+    expect(session?.server?.hostname).toBe("127.0.0.1");
+  });
+
+  it("should reject a websocket upgrade from a foreign origin", async () => {
+    const response = await fetch(`${url}/ws`, {
+      headers: {
+        Upgrade: "websocket",
+        Connection: "Upgrade",
+        "Sec-WebSocket-Version": "13",
+        "Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ==",
+        Origin: "http://evil.example",
+      },
+    });
+
+    expect(response.status).toBe(403);
+  });
+
+  it("should still accept a websocket with no origin header", async () => {
+    const ws = new WebSocket(`${url.replace("http", "ws")}/ws`);
+    const opened = await new Promise<boolean>((resolve) => {
+      ws.onopen = () => resolve(true);
+      ws.onerror = () => resolve(false);
+    });
+
+    expect(opened).toBe(true);
+    ws.close();
+  });
 });

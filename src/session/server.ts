@@ -11,12 +11,13 @@ const HTTP_BAD_REQUEST = 400;
 const HTTP_NOT_FOUND = 404;
 const HTTP_FORBIDDEN = 403;
 const LOOPBACK_HOST = "127.0.0.1";
+const LOOPBACK_NAME = "localhost";
 
 interface WsData {
   sessionId: string;
 }
 
-/** A browser sends Origin on upgrade; a matching Host means the page came from this server. */
+/** A browser sends Origin on upgrade; a matching loopback Host means the page came from this server. */
 function isSameOrigin(req: Request): boolean {
   const origin = req.headers.get("origin");
   if (!origin) return true;
@@ -25,6 +26,11 @@ function isSameOrigin(req: Request): boolean {
   if (!host) return false;
 
   try {
+    // Rebinding a domain to 127.0.0.1 makes Origin and Host match each other, so
+    // requiring a loopback Host is what actually pins the page to this server.
+    const { hostname } = new URL(`http://${host}`);
+    if (hostname !== LOOPBACK_HOST && hostname !== LOOPBACK_NAME) return false;
+
     return new URL(origin).host === host;
   } catch (_error: unknown) {
     return false;

@@ -166,4 +166,50 @@ describe("Server WebSocket error handling", () => {
     expect(opened).toBe(true);
     ws.close();
   });
+
+  it("should reject a websocket upgrade when the host header is not loopback", async () => {
+    // DNS rebinding points an attacker's domain at 127.0.0.1, so the browser sends
+    // that domain as both Host and Origin and they match each other.
+    const port = Number(new URL(url).port);
+    const status = await rawUpgradeStatus(port, `evil.example:${port}`, `http://evil.example:${port}`);
+
+    expect(status).toBe(403);
+  });
 });
+
+/** fetch() forbids setting Host, so drive the upgrade over a raw socket. */
+async function rawUpgradeStatus(port: number, host: string, origin: string): Promise<number> {
+  const request = [
+    "GET /ws HTTP/1.1",
+    `Host: ${host}`,
+    "Upgrade: websocket",
+    "Connection: Upgrade",
+    "Sec-WebSocket-Version: 13",
+    "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==",
+    `Origin: ${origin}`,
+  ].join("\r\n");
+
+  let received = "";
+  const socket = await Bun.connect({
+    hostname: "127.0.0.1",
+    port,
+    socket: {
+      data: (_socket, chunk) => {
+        received += chunk.toString();
+      },
+    },
+  });
+  socket.write(`${request}\r\n\r\n`);
+
+  await waitUntil(() => received.includes("\r\n"));
+  socket.end();
+
+  return Number(received.split(" ")[1]);
+}
+
+async function waitUntil(condition: () => boolean): Promise<void> {
+  const deadline = Date.now() + 2000;
+  while (!condition() && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}

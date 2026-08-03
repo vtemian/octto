@@ -101,6 +101,36 @@ describe("processAnswer", () => {
     expect(updated?.branches.b1.questions.length).toBe(2);
   });
 
+  it("should complete the branch when the probe wants to continue but sends no question", async () => {
+    await stateStore.createSession("ses_test", "test request", [{ id: "b1", scope: "scope1" }]);
+    const browserSession = await sessions.startSession({ title: "Test" });
+    await stateStore.setBrowserSessionId("ses_test", browserSession.session_id);
+
+    const { question_id } = sessions.pushQuestion(browserSession.session_id, "confirm", { question: "Test?" });
+    await stateStore.addQuestionToBranch("ses_test", "b1", {
+      id: question_id,
+      type: "confirm",
+      text: "Test?",
+      config: { question: "Test?" },
+    });
+
+    const client = createMockClient({ done: false });
+
+    await processAnswer(
+      stateStore,
+      sessions,
+      "ses_test",
+      browserSession.session_id,
+      question_id,
+      { choice: "yes" },
+      client,
+    );
+
+    const updated = await stateStore.getSession("ses_test");
+    expect(updated?.branches.b1.status).toBe("done");
+    expect(updated?.branches.b1.finding).toBe("Probe returned no question");
+  });
+
   it("should silently return when session not found", async () => {
     const client = createMockClient({ done: true });
     await processAnswer(

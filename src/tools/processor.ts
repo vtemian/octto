@@ -148,7 +148,12 @@ async function handleProbeResult(
     return;
   }
 
-  if (!probe.question) return;
+  if (!probe.question) {
+    // Returning here would leave the branch exploring with nothing pending, which
+    // spins await_brainstorm_complete forever.
+    await stateStore.completeBranch(sessionId, branchId, probe.finding || "Probe returned no question");
+    return;
+  }
 
   const rawQuestion = probe.question.config.question;
   const rawContext = probe.question.config.context;

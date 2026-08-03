@@ -734,6 +734,7 @@ export function getHtmlBundle(): string {
   <script>
     const wsUrl = 'ws://' + window.location.host + '/ws';
     let ws = null;
+    let ended = false;
     let questions = [];
     let expandedAnswers = new Set();
     
@@ -754,12 +755,15 @@ export function getHtmlBundle(): string {
           questions = questions.filter(q => q.id !== msg.id);
           render();
         } else if (msg.type === 'end') {
+          ended = true;
           document.getElementById('root').innerHTML = 
             '<div class="session-ended"><h1>Session Ended</h1><p>You can close this window.</p></div>';
+          ws.close();
         }
       };
       
       ws.onclose = () => {
+        if (ended) return;
         setTimeout(connect, 2000);
       };
     }

@@ -80,6 +80,20 @@ describe("Multi-Agent Integration", () => {
       expect(result.finding).toBe("Could not validate probe response");
     });
 
+    it("should not throw when prose braces precede the probe JSON", () => {
+      const parts = [
+        {
+          type: "text",
+          text: 'Thinking about {the scope} now.\n{"done": false, "question": {"type": "pick_one", "config": {}}}',
+        },
+      ];
+
+      const result = parseProbeResponse(parts);
+
+      expect(result.done).toBe(true);
+      expect(result.finding).toBe("Could not parse probe response");
+    });
+
     it("should extract JSON embedded in surrounding text", () => {
       const parts = [
         {

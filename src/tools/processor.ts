@@ -79,7 +79,15 @@ export function parseProbeResponse(parts: { type: string; [key: string]: unknown
     return { done: true, finding: "Could not parse probe response" };
   }
 
-  const parsed = v.safeParse(ProbeResultSchema, JSON.parse(jsonMatch[0]));
+  let candidate: unknown;
+  try {
+    candidate = JSON.parse(jsonMatch[0]);
+  } catch (_error: unknown) {
+    // The match is greedy, so prose braces before the JSON produce invalid input.
+    return { done: true, finding: "Could not parse probe response" };
+  }
+
+  const parsed = v.safeParse(ProbeResultSchema, candidate);
   if (!parsed.success) {
     return { done: true, finding: "Could not validate probe response" };
   }
@@ -140,7 +148,12 @@ async function handleProbeResult(
     return;
   }
 
-  if (!probe.question) return;
+  if (!probe.question) {
+    // Returning here would leave the branch exploring with nothing pending, which
+    // spins await_brainstorm_complete forever.
+    await stateStore.completeBranch(sessionId, branchId, probe.finding || "Probe returned no question");
+    return;
+  }
 
   const rawQuestion = probe.question.config.question;
   const rawContext = probe.question.config.context;

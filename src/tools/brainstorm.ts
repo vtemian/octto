@@ -34,6 +34,7 @@ const COLLECTION_STOPS = {
   COMPLETE: "complete",
   NO_ANSWER_WITHIN_TIMEOUT: "no_answer_within_timeout",
   ITERATION_CAP: "iteration_cap",
+  STALLED: "stalled",
 } as const;
 
 type CollectionStop = (typeof COLLECTION_STOPS)[keyof typeof COLLECTION_STOPS];
@@ -94,9 +95,14 @@ async function processOneAnswer(
   sessionId: string,
   browserSessionId: string,
   client: OpencodeClient,
-): Promise<"continue" | "break"> {
+): Promise<"continue" | "break" | "stalled"> {
   if (!answer.completed) {
-    if (answer.status === STATUSES.NONE_PENDING) await flushPending(pending);
+    if (answer.status === STATUSES.NONE_PENDING) {
+      // flushPending empties the array, so read it first.
+      const mayStillPushQuestions = pending.length > 0;
+      await flushPending(pending);
+      return mayStillPushQuestions ? "continue" : "stalled";
+    }
     return answer.status === STATUSES.TIMEOUT ? "break" : "continue";
   }
 
@@ -140,6 +146,10 @@ async function collectAnswers(
     const action = await processOneAnswer(answer, pending, stateStore, sessions, sessionId, browserSessionId, client);
     if (action === "break") {
       stoppedBecause = COLLECTION_STOPS.NO_ANSWER_WITHIN_TIMEOUT;
+      break;
+    }
+    if (action === "stalled") {
+      stoppedBecause = COLLECTION_STOPS.STALLED;
       break;
     }
   }
@@ -207,18 +217,31 @@ async function waitForReviewApproval(sessions: SessionStore, browserSessionId: s
 
 function formatInProgressResult(state: BrainstormState, stoppedBecause: CollectionStop): string {
   const branches = state.branch_order.map((id) => formatBranchStatus(state.branches[id])).join("\n");
-  const reason =
-    stoppedBecause === COLLECTION_STOPS.ITERATION_CAP
-      ? `Collected ${MAX_ITERATIONS} answers in one call, the per-call limit.`
-      : "No answer arrived within the wait window; the user is still thinking.";
   return `<brainstorm_in_progress>
   <request>${state.request}</request>
   <branches>
 ${branches}
   </branches>
-  <reason>${reason}</reason>
-  <next_action>The brainstorm is NOT finished and no branch was abandoned. Call await_brainstorm_complete again immediately with the same ids. Do not summarize, do not write the design document, and do not ask the user anything.</next_action>
+  <reason>${describeStop(stoppedBecause)}</reason>
+  <next_action>${describeNextAction(stoppedBecause)}</next_action>
 </brainstorm_in_progress>`;
+}
+
+function describeStop(stoppedBecause: CollectionStop): string {
+  if (stoppedBecause === COLLECTION_STOPS.ITERATION_CAP) {
+    return `Reached the ${MAX_ITERATIONS} iteration limit for one call.`;
+  }
+  if (stoppedBecause === COLLECTION_STOPS.STALLED) {
+    return "No question is pending and no answer is being processed, so the session cannot progress on its own.";
+  }
+  return "No answer arrived within the wait window; the user is still thinking.";
+}
+
+function describeNextAction(stoppedBecause: CollectionStop): string {
+  if (stoppedBecause === COLLECTION_STOPS.STALLED) {
+    return "The session cannot progress on its own. Call end_brainstorm to close it out with the findings collected so far. Do not call await_brainstorm_complete again.";
+  }
+  return "The brainstorm is NOT finished and no branch was abandoned. Call await_brainstorm_complete again immediately with the same ids. Do not summarize, do not write the design document, and do not ask the user anything.";
 }
 
 function formatSkippedReviewResult(state: BrainstormState): string {

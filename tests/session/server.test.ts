@@ -135,4 +135,10 @@ describe("Server WebSocket error handling", () => {
 
     expect(outcome).toBe("resolved");
   });
+
+  it("should bind to loopback only", () => {
+    const session = sessions.getSession(sessionId);
+
+    expect(session?.server?.hostname).toBe("127.0.0.1");
+  });
 });

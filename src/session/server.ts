@@ -9,6 +9,7 @@ import { WsClientMessageSchema } from "./types";
 
 const HTTP_BAD_REQUEST = 400;
 const HTTP_NOT_FOUND = 404;
+const LOOPBACK_HOST = "127.0.0.1";
 
 interface WsData {
   sessionId: string;
@@ -94,6 +95,7 @@ export async function createServer(
   const htmlBundle = getHtmlBundle();
 
   const server = Bun.serve<WsData>({
+    hostname: LOOPBACK_HOST,
     port: configuredPort ?? 0,
     fetch: (req, srv) => handleFetch(req, srv, sessionId, htmlBundle),
     websocket: {

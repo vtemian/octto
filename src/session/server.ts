@@ -9,10 +9,26 @@ import { WsClientMessageSchema } from "./types";
 
 const HTTP_BAD_REQUEST = 400;
 const HTTP_NOT_FOUND = 404;
+const HTTP_FORBIDDEN = 403;
 const LOOPBACK_HOST = "127.0.0.1";
 
 interface WsData {
   sessionId: string;
+}
+
+/** A browser sends Origin on upgrade; a matching Host means the page came from this server. */
+function isSameOrigin(req: Request): boolean {
+  const origin = req.headers.get("origin");
+  if (!origin) return true;
+
+  const host = req.headers.get("host");
+  if (!host) return false;
+
+  try {
+    return new URL(origin).host === host;
+  } catch (_error: unknown) {
+    return false;
+  }
 }
 
 function handleFetch(
@@ -24,6 +40,10 @@ function handleFetch(
   const url = new URL(req.url);
 
   if (url.pathname === "/ws") {
+    if (!isSameOrigin(req)) {
+      return new Response("Forbidden", { status: HTTP_FORBIDDEN });
+    }
+
     const success = server.upgrade(req, {
       data: { sessionId },
     });

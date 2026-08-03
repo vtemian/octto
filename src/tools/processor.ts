@@ -79,7 +79,15 @@ export function parseProbeResponse(parts: { type: string; [key: string]: unknown
     return { done: true, finding: "Could not parse probe response" };
   }
 
-  const parsed = v.safeParse(ProbeResultSchema, JSON.parse(jsonMatch[0]));
+  let candidate: unknown;
+  try {
+    candidate = JSON.parse(jsonMatch[0]);
+  } catch (_error: unknown) {
+    // The match is greedy, so prose braces before the JSON produce invalid input.
+    return { done: true, finding: "Could not parse probe response" };
+  }
+
+  const parsed = v.safeParse(ProbeResultSchema, candidate);
   if (!parsed.success) {
     return { done: true, finding: "Could not validate probe response" };
   }

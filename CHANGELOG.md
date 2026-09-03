@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-09-03
+
+### Fixed
+- Session teardown no longer hangs. `endSession` awaited `server.stop()` without closing active connections, which never settles while a websocket is attached, so `end_brainstorm`, `end_session` and the `session.deleted` handler all hung until the user closed the tab. The UI now closes its socket on end and skips the reconnect (#53).
+- Brainstorm livelock is closed on both routes in. A branch could sit EXPLORING with no pending question, turning `await_brainstorm_complete` into a non-terminating loop that reported collecting answers it never received. A probe result with no question now completes the branch, unparseable probe output returns the fallback instead of throwing, and the wait loop stops when nothing is pending and nothing is in flight (#53).
+
+### Security
+- The session server no longer binds the wildcard address. It now binds 127.0.0.1 and requires a same-origin loopback Host, which blocks access from the local network and from other browser tabs (websockets ignore same-origin policy), including the DNS rebinding bypass that an origin check alone permits. Clients sending no Origin are still accepted by design (#53).
+
+### Changed
+- `@opencode-ai/plugin` moved from 1.18.9 to 1.18.15 (#54, #56).
+- `eslint-plugin-unicorn` moved from 72.0.0 to 73.0.0 (#57).
+
 ## [0.4.0] - 2026-07-31
 
 ### Changed

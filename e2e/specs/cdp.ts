@@ -120,7 +120,17 @@ export async function connect(wsUrl: string): Promise<CdpSession> {
 
   return {
     evaluate: <T>(expression: string): Promise<T> => sendEvaluate<T>(socket, pending, nextId++, expression),
-    close: () => socket.close(),
+    close: () => {
+      socket.close();
+      // Detaching CDP leaves the tab open in the shared chromium, and a later
+      // spec's waitForTarget would latch onto the stale page. Close the tab
+      // itself via the DevTools HTTP API (fire and forget).
+      const targetId = wsUrl.split("/").pop();
+      const port = new URL(wsUrl).port;
+      if (targetId) {
+        void fetch(`http://127.0.0.1:${port}/json/close/${targetId}`).catch(() => {});
+      }
+    },
   };
 }
 

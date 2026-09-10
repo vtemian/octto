@@ -39,6 +39,7 @@ describe("issue #58: session end must not hang nor leave a zombie page", () => {
   let stub: StubHandle;
   let home: string;
   let page: CdpSession | undefined;
+  let run: Bun.Subprocess | undefined;
 
   beforeAll(async () => {
     home = mkdtempSync(join(tmpdir(), "octto-e2e-home-"));
@@ -47,13 +48,16 @@ describe("issue #58: session end must not hang nor leave a zombie page", () => {
   });
 
   afterAll(() => {
+    // Kill defensively: a failure before readUntil leaves the run (and its
+    // octto server on the pinned port) alive, poisoning the next spec.
+    run?.kill();
     page?.close();
     stub?.stop();
     rmSync(home, { recursive: true, force: true });
   });
 
   it("stays on Session Ended and the agent run completes", async () => {
-    const run = spawnOpencode(home, "build", "Ask the user which cache backend we should use, then wrap up.");
+    run = spawnOpencode(home, "build", "Ask the user which cache backend we should use, then wrap up.");
 
     // Reaching this tab proves octto's openBrowser() path worked.
     const target = await waitForTarget(cdpPort(), `http://localhost:${octtoPort()}`, TAB_TIMEOUT_MS);

@@ -26,6 +26,7 @@ describe("octto inside a real opencode session", () => {
   let stub: StubHandle;
   let home: string;
   let page: CdpSession | undefined;
+  let run: Bun.Subprocess | undefined;
 
   beforeAll(async () => {
     home = mkdtempSync(join(tmpdir(), "octto-e2e-home-"));
@@ -34,13 +35,16 @@ describe("octto inside a real opencode session", () => {
   });
 
   afterAll(() => {
+    // Kill defensively: a failure before readUntil leaves the run (and its
+    // octto server on the pinned port) alive, poisoning the next spec.
+    run?.kill();
     page?.close();
     stub?.stop();
     rmSync(home, { recursive: true, force: true });
   });
 
   it("should open a real browser and round-trip an allowOther freetext answer back to the agent", async () => {
-    const run = spawnOpencode(home, "build", "Ask the user which datastore we should use.");
+    run = spawnOpencode(home, "build", "Ask the user which datastore we should use.");
 
     // Reaching this tab proves octto's openBrowser() -> xdg-open path worked,
     // not merely that its HTTP server was listening.

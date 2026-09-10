@@ -1,0 +1,40 @@
+[
+  {
+    "tool": "create_brainstorm",
+    "args": {
+      "request": "Add a caching layer to the API",
+      "branches": [
+        {
+          "id": "backend",
+          "scope": "Cache backend choice",
+          "initial_question": {
+            "type": "pick_one",
+            "config": {
+              "question": "Which cache backend?",
+              "options": [{ "id": "redis", "label": "Redis" }, { "id": "memory", "label": "In-memory" }]
+            }
+          }
+        },
+        {
+          "id": "invalidation",
+          "scope": "Cache invalidation strategy",
+          "initial_question": {
+            "type": "pick_one",
+            "config": {
+              "question": "Which invalidation strategy?",
+              "options": [{ "id": "ttl", "label": "TTL expiry" }, { "id": "events", "label": "Event-driven" }]
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "tool": "await_brainstorm_complete",
+    "args": {
+      "session_id": { "$extract": "ses_[a-z0-9]+" },
+      "browser_session_id": { "$extract": "ses_[a-z0-9]+" }
+    }
+  },
+  { "text": "E2E_DONE" }
+]

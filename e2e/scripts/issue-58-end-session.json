@@ -1,0 +1,26 @@
+[
+  {
+    "tool": "start_session",
+    "args": {
+      "title": "e2e issue-58 end-session",
+      "questions": [
+        {
+          "type": "pick_one",
+          "config": {
+            "question": "Which cache backend should we use?",
+            "options": [{ "id": "redis", "label": "Redis" }, { "id": "memcached", "label": "Memcached" }]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "tool": "get_next_answer",
+    "args": { "session_id": { "$extract": "ses_[a-z0-9]+" }, "block": true, "timeout": 120000 }
+  },
+  {
+    "tool": "end_session",
+    "args": { "session_id": { "$extract": "ses_[a-z0-9]+" } }
+  },
+  { "text": "E2E_DONE" }
+]

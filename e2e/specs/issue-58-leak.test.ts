@@ -1,21 +1,23 @@
 // e2e/specs/issue-58-leak.test.ts
 /**
- * Issue #58 reproduction spec: an abandoned brainstorm leaks its session server.
+ * Issue #58 regression spec: deleting an opencode session mid-brainstorm must
+ * tear the brainstorm's octto server down.
  *
- * The plugin's session.deleted cleanup only ends sessions created through the
- * tracked `start_session` tool. `create_brainstorm` browser sessions are
- * untracked, so deleting the opencode session mid-brainstorm leaves the octto
- * server alive: the stale page keeps serving and replaying its questions, and -
- * because the harness pins OCTTO_PORT - the next brainstorm in the same process
- * cannot even bind. That live-but-orphaned page is the "blank page: waiting for
- * questions" trap from issue #58.
+ * The plugin's session.deleted cleanup used to end only sessions created
+ * through the tracked `start_session` tool. `create_brainstorm` browser
+ * sessions were untracked, so deleting the opencode session mid-brainstorm
+ * leaked the octto server: the stale page kept serving and replaying its
+ * questions, and - because the harness pins OCTTO_PORT - the next brainstorm
+ * in the same process could not even bind. That live-but-orphaned page was
+ * the "blank page: waiting for questions" trap from issue #58.
  *
- * These assertions intentionally document the BUGGY behavior (the spec passes
- * while the leak exists). Flip them when the leak is fixed, so this becomes the
- * regression test.
+ * create_brainstorm is now tracked like start_session, so session.deleted
+ * ends the brainstorm's server too. These assertions encode the FIXED
+ * behavior: this spec FAILS on v0.4.2 and earlier.
  *
- * The leak is per-process, so this drives a long-lived `opencode serve` over its
- * HTTP API; the one-shot `opencode run` would take the servers down with it.
+ * The leak is per-process, so this drives a long-lived `opencode serve` over
+ * its HTTP API; the one-shot `opencode run` would take the servers down with
+ * it.
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -30,7 +32,6 @@ const SERVE_PORT = 4099;
 const SERVE = `http://127.0.0.1:${SERVE_PORT}`;
 const OCTTO_URL = `http://localhost:${octtoPort()}`;
 const WS_COLLECT_MS = 2_500;
-const MESSAGE_POLL_TIMEOUT_MS = 90_000;
 
 interface ProbeResult {
   http: boolean;
@@ -136,12 +137,7 @@ async function deleteSession(sessionId: string): Promise<void> {
   }
 }
 
-async function sessionMessagesText(sessionId: string): Promise<string> {
-  const messages = await api(`/session/${sessionId}/message`);
-  return JSON.stringify(messages);
-}
-
-describe("issue #58: abandoned brainstorm leaks its session server", () => {
+describe("issue #58: deleting a session tears its brainstorm server down", () => {
   let stub: StubHandle;
   let home: string;
   let serve: Bun.Subprocess | undefined;
@@ -161,7 +157,7 @@ describe("issue #58: abandoned brainstorm leaks its session server", () => {
     rmSync(home, { recursive: true, force: true });
   });
 
-  it("keeps the stale server alive after the opencode session is deleted", async () => {
+  it("stops the stale server after the opencode session is deleted", async () => {
     console.log("[issue-58:leak] step 1: create session");
     const s1 = await newSession();
     console.log("[issue-58:leak] step 2: prompt", s1);
@@ -183,28 +179,28 @@ describe("issue #58: abandoned brainstorm leaks its session server", () => {
     await deleteSession(s1);
     await Bun.sleep(2_000);
 
-    // BUG: the brainstorm's browser session is untracked, so its server survives
-    // and keeps replaying the orphaned questions. Once fixed, probeOctto() should
-    // report { http: false, questions: null } here.
+    // The brainstorm's browser session is tracked, so session.deleted ends it:
+    // the server must be gone rather than replaying orphaned questions.
     const after = await probeOctto();
     console.log("[issue-58:leak] after delete:", JSON.stringify(after));
-    expect(after.http, "leak closed? the stale octto server no longer serves").toBe(true);
-    expect(after.questions?.length, "leak closed? the stale session stopped replaying questions").toBe(2);
+    expect(after.http, "the stale octto server still serves (leak from #58)").toBe(false);
+    expect(after.questions, "the stale session still replays questions (leak from #58)").toBeNull();
 
-    // Blast radius: the leaked server holds the pinned port, so the next
-    // brainstorm in the same process fails to bind and the agent sees an error.
+    // With the port released, the next brainstorm in the same process binds
+    // cleanly and serves its own questions.
     const s2 = await newSession();
     await prompt(s2, "Brainstorm a caching layer for the API.");
 
-    let messages = "";
-    try {
-      await waitUntil(async () => {
-        messages = await sessionMessagesText(s2);
-        return /EADDRINUSE|in use|Failed to start/i.test(messages);
-      }, "second brainstorm to hit the leaked port");
-    } catch {
-      console.log("[issue-58:leak] second session messages:", messages.slice(-800));
-      throw new Error("second brainstorm never reported a bind failure");
-    }
+    await waitUntil(
+      () =>
+        fetch(OCTTO_URL).then(
+          (r) => r.ok,
+          () => false,
+        ),
+      "second brainstorm's octto server",
+    );
+    const rebound = await probeOctto();
+    console.log("[issue-58:leak] second brainstorm:", JSON.stringify(rebound));
+    expect(rebound.questions?.length, "second brainstorm did not serve its questions").toBe(2);
   }, 240_000);
 });

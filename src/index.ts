@@ -32,13 +32,18 @@ function wrapWithTracking(tool: OcttoTool, tracked: Map<string, Set<string>>): v
   const originalExecute = tool.execute;
   tool.execute = async (args, toolCtx) => {
     const executeOutput = await originalExecute(args, toolCtx);
-    const match = outputText(executeOutput).match(/ses_[a-z0-9]+/);
 
-    if (match && toolCtx.sessionID) {
+    // A tool result can mention several session ids (create_brainstorm returns
+    // both the state session and the browser session that owns the server).
+    // Track them all: endSession no-ops on ids the session store doesn't own.
+    if (toolCtx.sessionID) {
       if (!tracked.has(toolCtx.sessionID)) {
         tracked.set(toolCtx.sessionID, new Set());
       }
-      tracked.get(toolCtx.sessionID)?.add(match[0]);
+      const octtoSessions = tracked.get(toolCtx.sessionID);
+      for (const match of outputText(executeOutput).matchAll(/ses_[a-z0-9]+/g)) {
+        octtoSessions?.add(match[0]);
+      }
     }
 
     return executeOutput;
@@ -62,6 +67,10 @@ const Octto: Plugin = async ({ client, directory }) => {
   const tools = createOcttoTools(sessions, client);
 
   wrapWithTracking(tools.start_session, tracked);
+  // Brainstorm browser sessions are created inside create_brainstorm, not via
+  // start_session: without wrapping it too, deleting the opencode session
+  // mid-brainstorm leaks the octto server (issue #58).
+  wrapWithTracking(tools.create_brainstorm, tracked);
 
   return {
     tool: tools,

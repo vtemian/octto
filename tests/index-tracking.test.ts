@@ -55,7 +55,7 @@ describe("session tracking (issue #58)", () => {
       { sessionID: "opencode_session_1" } as any,
     );
 
-    const url = resultText(executeOutput).match(/http:\/\/localhost:\d+/)?.[0];
+    const url = resultText(executeOutput).match(/http:\/\/localhost:\d+\/\?token=[a-f0-9]+/)?.[0];
     expect(url).toBeDefined();
 
     const before = await fetch(url as string);

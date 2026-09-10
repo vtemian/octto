@@ -305,14 +305,38 @@ export interface WsConnectedMessage {
 export type WsServerMessage = WsQuestionMessage | WsCancelMessage | WsEndMessage;
 export type WsClientMessage = WsResponseMessage | WsConnectedMessage;
 
+const FilePayloadSchema = v.object({
+  name: v.string(),
+  content: v.string(),
+  type: v.string(),
+});
+
+/**
+ * Shape of every answer the UI can legitimately submit. Previously the
+ * websocket schema accepted `unknown` and cast it, so any client controlled
+ * agent-bound content with no validation at all (#55).
+ */
+const AnswerSchema = v.union([
+  v.object({ selected: v.string(), other: v.optional(v.string()), feedback: v.optional(v.string()) }), // pick_one, show_options
+  v.object({ selected: v.array(v.string()), other: v.optional(v.string()) }), // pick_many
+  v.object({ choice: v.picklist(["yes", "no", "cancel"]) }), // confirm
+  v.object({ choice: v.picklist(["up", "down"]) }), // thumbs
+  v.object({ emoji: v.string() }), // emoji_react
+  v.object({ text: v.string() }), // ask_text
+  v.object({ value: v.number() }), // slider
+  v.object({ ranking: v.array(v.object({ id: v.string(), rank: v.number() })) }), // rank
+  v.object({ ratings: v.record(v.string(), v.number()) }), // rate
+  v.object({ code: v.string() }), // ask_code
+  v.object({ images: v.array(FilePayloadSchema) }), // ask_image
+  v.object({ files: v.array(FilePayloadSchema) }), // ask_file
+  v.object({ decision: v.string(), feedback: v.optional(v.string()) }), // show_diff, show_plan review
+]);
+
 export const WsClientMessageSchema = v.variant("type", [
   v.object({
     type: v.literal("response"),
     id: v.string(),
-    answer: v.pipe(
-      v.unknown(),
-      v.transform((input): Answer => input as Answer),
-    ),
+    answer: AnswerSchema,
   }),
   v.object({ type: v.literal("connected") }),
 ]);

@@ -30,7 +30,6 @@ const PLUGIN_PATH = "/work/dist/index.js";
 const SCRIPT = join(import.meta.dir, "..", "scripts", "issue-58-leak.json");
 const SERVE_PORT = 4099;
 const SERVE = `http://127.0.0.1:${SERVE_PORT}`;
-const OCTTO_URL = `http://localhost:${octtoPort()}`;
 const WS_COLLECT_MS = 2_500;
 
 interface ProbeResult {
@@ -38,10 +37,10 @@ interface ProbeResult {
   questions: string[] | null;
 }
 
-function collectQuestions(): Promise<string[]> {
+function collectQuestions(wsUrl: string): Promise<string[]> {
   return new Promise((resolve, reject) => {
     const ids: string[] = [];
-    const ws = new WebSocket(`ws://localhost:${octtoPort()}/ws`);
+    const ws = new WebSocket(wsUrl);
     const timer = setTimeout(() => {
       ws.close();
       resolve(ids);
@@ -57,13 +56,26 @@ function collectQuestions(): Promise<string[]> {
   });
 }
 
-async function probeOctto(): Promise<ProbeResult> {
-  const http = await fetch(OCTTO_URL).then(
+/** Every octto route requires the session token in the URL (#55), so the
+ * websocket address is derived from the token'd page URL. */
+function wsUrlFor(httpUrl: string): string {
+  const url = new URL(httpUrl);
+  return `ws://${url.host}/ws?token=${url.searchParams.get("token")}`;
+}
+
+async function probeOctto(baseUrl: string): Promise<ProbeResult> {
+  const http = await fetch(baseUrl).then(
     (r) => r.ok,
     () => false,
   );
   if (!http) return { http: false, questions: null };
-  return { http: true, questions: await collectQuestions() };
+  return { http: true, questions: await collectQuestions(wsUrlFor(baseUrl)) };
+}
+
+/** The create_brainstorm tool output carries the session URL (token included). */
+async function octtoUrlFromSession(sessionId: string): Promise<string | null> {
+  const messages = await api(`/session/${sessionId}/message`);
+  return JSON.stringify(messages).match(/http:\/\/localhost:\d+\/\?token=[a-f0-9]+/)?.[0] ?? null;
 }
 
 async function api(path: string, init?: RequestInit): Promise<unknown> {
@@ -162,17 +174,16 @@ describe("issue #58: deleting a session tears its brainstorm server down", () =>
     const s1 = await newSession();
     console.log("[issue-58:leak] step 2: prompt", s1);
     await prompt(s1, "Brainstorm a caching layer for the API.");
-    console.log("[issue-58:leak] step 3: wait for octto server");
+    console.log("[issue-58:leak] step 3: wait for the brainstorm URL");
 
-    await waitUntil(
-      () =>
-        fetch(OCTTO_URL).then(
-          (r) => r.ok,
-          () => false,
-        ),
-      "octto server",
-    );
-    const before = await probeOctto();
+    // Probes need the token'd session URL from the create_brainstorm output.
+    let octtoUrl: string | null = null;
+    await waitUntil(async () => {
+      octtoUrl = await octtoUrlFromSession(s1);
+      return octtoUrl !== null;
+    }, "brainstorm URL with session token");
+    const sessionUrl = octtoUrl as string;
+    const before = await probeOctto(sessionUrl);
     console.log("[issue-58:leak] before delete:", JSON.stringify(before));
     expect(before.questions?.length).toBe(2);
 
@@ -180,8 +191,10 @@ describe("issue #58: deleting a session tears its brainstorm server down", () =>
     await Bun.sleep(2_000);
 
     // The brainstorm's browser session is tracked, so session.deleted ends it:
-    // the server must be gone rather than replaying orphaned questions.
-    const after = await probeOctto();
+    // the server must be gone rather than replaying orphaned questions. Probing
+    // with the still-valid-looking URL keeps this honest: a live server with a
+    // matching token would answer 200 here.
+    const after = await probeOctto(sessionUrl);
     console.log("[issue-58:leak] after delete:", JSON.stringify(after));
     expect(after.http, "the stale octto server still serves (leak from #58)").toBe(false);
     expect(after.questions, "the stale session still replays questions (leak from #58)").toBeNull();
@@ -191,15 +204,12 @@ describe("issue #58: deleting a session tears its brainstorm server down", () =>
     const s2 = await newSession();
     await prompt(s2, "Brainstorm a caching layer for the API.");
 
-    await waitUntil(
-      () =>
-        fetch(OCTTO_URL).then(
-          (r) => r.ok,
-          () => false,
-        ),
-      "second brainstorm's octto server",
-    );
-    const rebound = await probeOctto();
+    let secondUrl: string | null = null;
+    await waitUntil(async () => {
+      secondUrl = await octtoUrlFromSession(s2);
+      return secondUrl !== null;
+    }, "second brainstorm's URL");
+    const rebound = await probeOctto(secondUrl as string);
     console.log("[issue-58:leak] second brainstorm:", JSON.stringify(rebound));
     expect(rebound.questions?.length, "second brainstorm did not serve its questions").toBe(2);
   }, 240_000);

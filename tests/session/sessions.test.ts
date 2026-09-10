@@ -19,7 +19,7 @@ describe("createSessionStore", () => {
       const result = await sessions.startSession({ title: "Test Session" });
 
       expect(result.session_id).toMatch(/^ses_[a-z0-9]{8}$/);
-      expect(result.url).toMatch(/^http:\/\/localhost:\d+$/);
+      expect(result.url).toMatch(/^http:\/\/localhost:\d+\/\?token=[a-f0-9]{48}$/);
     });
 
     it("should create multiple sessions with different IDs", async () => {
@@ -34,7 +34,7 @@ describe("createSessionStore", () => {
       const fixedPortSessions = createSessionStore({ skipBrowser: true, port: 9876 });
       try {
         const result = await fixedPortSessions.startSession({ title: "Fixed Port Session" });
-        expect(result.url).toBe("http://localhost:9876");
+        expect(result.url).toMatch(/^http:\/\/localhost:9876\/\?token=[a-f0-9]{48}$/);
       } finally {
         await fixedPortSessions.cleanup();
       }
@@ -44,9 +44,9 @@ describe("createSessionStore", () => {
       const randomPortSessions = createSessionStore({ skipBrowser: true, port: 0 });
       try {
         const result = await randomPortSessions.startSession({});
-        expect(result.url).toMatch(/^http:\/\/localhost:\d+$/);
+        expect(result.url).toMatch(/^http:\/\/localhost:\d+\/\?token=[a-f0-9]{48}$/);
         // Port should be assigned (not 0)
-        const port = parseInt(result.url.split(":")[2], 10);
+        const port = Number(new URL(result.url).port);
         expect(port).toBeGreaterThan(0);
       } finally {
         await randomPortSessions.cleanup();

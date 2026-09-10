@@ -13,6 +13,7 @@ export function getHtmlBundle(): string {
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js" integrity="sha384-948ahk4ZmxYVYOc+rxN1H2gM1EJ2Duhp7uHtZ4WSLkV4Vtx5MUqnV+l7u9B+jFv+" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.4.15/dist/purify.min.js" integrity="sha384-uUMu9JDY09vBzRf9SPcK2VgUj+W/70J6Soc+Dded5P474ElQ63iv9j5N3DE7Kp3N" crossorigin="anonymous"></script>
   <style>
     :root {
       --background: #ffffff;
@@ -732,7 +733,8 @@ export function getHtmlBundle(): string {
   </div>
   
   <script>
-    const wsUrl = 'ws://' + window.location.host + '/ws';
+    const sessionToken = new URLSearchParams(window.location.search).get('token') || '';
+    const wsUrl = 'ws://' + window.location.host + '/ws?token=' + encodeURIComponent(sessionToken);
     let ws = null;
     let ended = false;
     let questions = [];
@@ -1015,7 +1017,7 @@ export function getHtmlBundle(): string {
     function renderReviewSection(q) {
       let html = '';
       // Render markdown content
-      const markdownHtml = typeof marked !== 'undefined' ? marked.parse(q.config.content || '') : escapeHtml(q.config.content || '');
+      const markdownHtml = renderMarkdown(q.config.content);
       html += '<div class="review-content">' + markdownHtml + '</div>';
       html += '<div class="feedback-input">';
       html += '<label for="feedback_' + q.id + '">Feedback (optional)</label>';
@@ -1036,13 +1038,13 @@ export function getHtmlBundle(): string {
         for (const section of q.config.sections) {
           html += '<div class="plan-section">';
           html += '<h3 class="plan-section-title">' + escapeHtml(section.title) + '</h3>';
-          const sectionHtml = typeof marked !== 'undefined' ? marked.parse(section.content || '') : escapeHtml(section.content || '');
+          const sectionHtml = renderMarkdown(section.content);
           html += '<div class="review-content">' + sectionHtml + '</div>';
           html += '</div>';
         }
       } else if (q.config.markdown) {
         // Fallback to raw markdown
-        const markdownHtml = typeof marked !== 'undefined' ? marked.parse(q.config.markdown) : escapeHtml(q.config.markdown);
+        const markdownHtml = renderMarkdown(q.config.markdown);
         html += '<div class="review-content">' + markdownHtml + '</div>';
       }
       
@@ -1632,6 +1634,16 @@ export function getHtmlBundle(): string {
       return html;
     }
     
+    function renderMarkdown(text) {
+      const source = text || '';
+      // No sanitizer loaded means marked's raw HTML is untrusted: fall back to
+      // escaped text rather than skip sanitization (#55).
+      if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') {
+        return escapeHtml(source);
+      }
+      return DOMPurify.sanitize(marked.parse(source));
+    }
+
     function escapeHtml(text) {
       const div = document.createElement('div');
       div.textContent = text;

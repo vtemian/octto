@@ -3,7 +3,7 @@ import type { ServerWebSocket } from "bun";
 import type * as v from "valibot";
 
 import { DEFAULT_ANSWER_TIMEOUT_MS } from "@/constants";
-import { generateQuestionId, generateSessionId } from "@/utils";
+import { generateQuestionId, generateSessionId, generateToken } from "@/utils";
 
 import { openBrowser } from "./browser";
 import { createServer } from "./server";
@@ -84,8 +84,10 @@ async function startSession(
   input: StartSessionInput,
 ): Promise<StartSessionOutput> {
   const sessionId = generateSessionId();
-  const { server, port } = await createServer(sessionId, store, state.options.port);
-  const url = `http://localhost:${port}`;
+  // The URL is the credential: every route on the session server requires it.
+  const token = generateToken();
+  const { server, port } = await createServer(sessionId, store, token, state.options.port);
+  const url = `http://localhost:${port}/?token=${token}`;
 
   const session: Session = {
     id: sessionId,

@@ -12,7 +12,7 @@ export function getHtmlBundle(): string {
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js" integrity="sha384-948ahk4ZmxYVYOc+rxN1H2gM1EJ2Duhp7uHtZ4WSLkV4Vtx5MUqnV+l7u9B+jFv+" crossorigin="anonymous"></script>
   <style>
     :root {
       --background: #ffffff;
@@ -1627,7 +1627,7 @@ export function getHtmlBundle(): string {
     
     function renderAnsweredEmoji(q, answer) {
       let html = '<div class="readonly-answer">';
-      html += '<span style="font-size: 2rem;">' + (answer.emoji || '') + '</span>';
+      html += '<span style="font-size: 2rem;">' + escapeHtml(answer.emoji || '') + '</span>';
       html += '</div>';
       return html;
     }

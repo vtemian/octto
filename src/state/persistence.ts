@@ -83,7 +83,7 @@ function parseBrainstormState(content: string, sessionId: string): BrainstormSta
   return parseResult.output;
 }
 
-export function createStatePersistence(baseDir = ".brainstorm"): StatePersistence {
+export function createStatePersistence(baseDir = ".octto"): StatePersistence {
   return {
     async save(state: BrainstormState): Promise<void> {
       ensureDir(baseDir);

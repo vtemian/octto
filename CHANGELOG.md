@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - OpenCode 2 support. The package default-exports `{ id, setup, server }`: OpenCode 2 loads it through `setup()`, OpenCode 1 (1.18.29 or newer) through `server()`.
 
+- OpenCode 2 end-to-end tier (`bun run test:e2e:v2`, `e2e/Dockerfile.v2`): a full brainstorm round through the real v2 host, with the probe agent answered by the stub model.
+
+### Fixed
+- Under OpenCode 2, octto tools are registered with `codemode: false`. Without it the host lists plugin tools only inside Code Mode's `execute`, and a model calling `create_brainstorm` by name got "No tool named create_brainstorm is currently available".
+- Under OpenCode 2, a probe whose model turn errored or never completed is reported as a failure instead of being recorded as a finding, matching v1.
+
 ### Changed
 - Default agent model moved from `openai/gpt-5.2-codex`, which both hosts dropped from their catalogues, to `openai/gpt-5.3-codex`. Override it in `octto.json` as before.
 - **Breaking:** OpenCode 1 releases older than 1.18.29 are no longer supported; they expect a function default export.

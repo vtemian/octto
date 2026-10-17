@@ -7,19 +7,17 @@ import { createSessionStore, type SessionStore } from "../../src/session/session
 import { createStateStore, type StateStore } from "../../src/state/store";
 import { processAnswer } from "../../src/tools/processor";
 
-function createMockClient(probeResponse: { done: boolean; finding?: string; question?: unknown }) {
-  const sessionId = "mock-probe-session";
+function createProbe(probeResponse: { done: boolean; finding?: string; question?: unknown }) {
+  const calls: { agent: string; text: string }[] = [];
   return {
-    session: {
-      create: async () => ({ data: { id: sessionId } }),
-      prompt: async () => ({
-        data: {
-          parts: [{ type: "text", text: JSON.stringify(probeResponse) }],
-        },
-      }),
-      delete: async () => ({}),
+    calls,
+    runner: {
+      run: async (agent: string, text: string) => {
+        calls.push({ agent, text });
+        return `Some prose first.\n${JSON.stringify(probeResponse)}`;
+      },
     },
-  } as any;
+  };
 }
 
 describe("processAnswer", () => {
@@ -38,37 +36,7 @@ describe("processAnswer", () => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it("should complete a branch when probe returns done", async () => {
-    const state = await stateStore.createSession("ses_test", "test request", [{ id: "b1", scope: "scope1" }]);
-    const browserSession = await sessions.startSession({ title: "Test" });
-    await stateStore.setBrowserSessionId("ses_test", browserSession.session_id);
-
-    const { question_id } = sessions.pushQuestion(browserSession.session_id, "confirm", { question: "Test?" });
-    await stateStore.addQuestionToBranch("ses_test", "b1", {
-      id: question_id,
-      type: "confirm",
-      text: "Test?",
-      config: { question: "Test?" },
-    });
-
-    const client = createMockClient({ done: true, finding: "Test finding" });
-
-    await processAnswer(
-      stateStore,
-      sessions,
-      "ses_test",
-      browserSession.session_id,
-      question_id,
-      { choice: "yes" },
-      client,
-    );
-
-    const updated = await stateStore.getSession("ses_test");
-    expect(updated?.branches.b1.status).toBe("done");
-    expect(updated?.branches.b1.finding).toBe("Test finding");
-  });
-
-  it("should add follow-up question when probe returns not done", async () => {
+  async function seedBranchQuestion() {
     await stateStore.createSession("ses_test", "test request", [{ id: "b1", scope: "scope1" }]);
     const browserSession = await sessions.startSession({ title: "Test" });
     await stateStore.setBrowserSessionId("ses_test", browserSession.session_id);
@@ -81,7 +49,51 @@ describe("processAnswer", () => {
       config: { question: "Test?" },
     });
 
-    const client = createMockClient({
+    return { browserSession, question_id };
+  }
+
+  it("should complete a branch when probe returns done", async () => {
+    const { browserSession, question_id } = await seedBranchQuestion();
+    const { runner } = createProbe({ done: true, finding: "Test finding" });
+
+    await processAnswer(
+      stateStore,
+      sessions,
+      "ses_test",
+      browserSession.session_id,
+      question_id,
+      { choice: "yes" },
+      runner,
+    );
+
+    const updated = await stateStore.getSession("ses_test");
+    expect(updated?.branches.b1.status).toBe("done");
+    expect(updated?.branches.b1.finding).toBe("Test finding");
+  });
+
+  it("asks the probe agent with the branch context", async () => {
+    const { browserSession, question_id } = await seedBranchQuestion();
+    const { runner, calls } = createProbe({ done: true, finding: "ok" });
+
+    await processAnswer(
+      stateStore,
+      sessions,
+      "ses_test",
+      browserSession.session_id,
+      question_id,
+      { choice: "yes" },
+      runner,
+    );
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].agent).toBe("probe");
+    expect(calls[0].text).toContain('<branch id="b1"');
+    expect(calls[0].text).toContain("test request");
+  });
+
+  it("should add follow-up question when probe returns not done", async () => {
+    const { browserSession, question_id } = await seedBranchQuestion();
+    const { runner } = createProbe({
       done: false,
       question: { type: "ask_text", config: { question: "Follow up?" } },
     });
@@ -93,7 +105,7 @@ describe("processAnswer", () => {
       browserSession.session_id,
       question_id,
       { choice: "yes" },
-      client,
+      runner,
     );
 
     const updated = await stateStore.getSession("ses_test");
@@ -102,19 +114,8 @@ describe("processAnswer", () => {
   });
 
   it("should complete the branch when the probe wants to continue but sends no question", async () => {
-    await stateStore.createSession("ses_test", "test request", [{ id: "b1", scope: "scope1" }]);
-    const browserSession = await sessions.startSession({ title: "Test" });
-    await stateStore.setBrowserSessionId("ses_test", browserSession.session_id);
-
-    const { question_id } = sessions.pushQuestion(browserSession.session_id, "confirm", { question: "Test?" });
-    await stateStore.addQuestionToBranch("ses_test", "b1", {
-      id: question_id,
-      type: "confirm",
-      text: "Test?",
-      config: { question: "Test?" },
-    });
-
-    const client = createMockClient({ done: false });
+    const { browserSession, question_id } = await seedBranchQuestion();
+    const { runner } = createProbe({ done: false });
 
     await processAnswer(
       stateStore,
@@ -123,7 +124,7 @@ describe("processAnswer", () => {
       browserSession.session_id,
       question_id,
       { choice: "yes" },
-      client,
+      runner,
     );
 
     const updated = await stateStore.getSession("ses_test");
@@ -132,7 +133,7 @@ describe("processAnswer", () => {
   });
 
   it("should silently return when session not found", async () => {
-    const client = createMockClient({ done: true });
+    const { runner, calls } = createProbe({ done: true });
     await processAnswer(
       stateStore,
       sessions,
@@ -140,8 +141,9 @@ describe("processAnswer", () => {
       "browser_nonexistent",
       "q_nonexistent",
       { choice: "yes" },
-      client,
+      runner,
     );
-    // Should not throw
+
+    expect(calls).toHaveLength(0);
   });
 });

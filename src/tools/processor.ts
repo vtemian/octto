@@ -5,7 +5,7 @@ import type { Answer, SessionStore } from "@/session";
 import { QUESTION_TYPES } from "@/session";
 import { BRANCH_STATUSES, type BrainstormState, type StateStore } from "@/state";
 
-import type { OpencodeClient } from "./types";
+import type { ProbeRunner } from "./probe";
 
 const ProbeResultSchema = v.object({
   done: v.boolean(),
@@ -65,16 +65,8 @@ function formatBranchContext(state: BrainstormState, branchId: string): string {
   return lines.join("\n");
 }
 
-export function parseProbeResponse(parts: { type: string; [key: string]: unknown }[]): ProbeResult {
-  const responseText = parts
-    .filter(
-      (part): part is typeof part & { text: string } =>
-        part.type === "text" && "text" in part && typeof part.text === "string",
-    )
-    .map((part) => part.text)
-    .join("");
-
-  const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+export function parseProbeResponse(text: string): ProbeResult {
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
     return { done: true, finding: "Could not parse probe response" };
   }
@@ -94,37 +86,9 @@ export function parseProbeResponse(parts: { type: string; [key: string]: unknown
   return parsed.output;
 }
 
-async function runProbeAgent(client: OpencodeClient, state: BrainstormState, branchId: string): Promise<ProbeResult> {
-  const session = await client.session.create({
-    body: { title: `probe-${branchId}` },
-  });
-
-  if (!session.data) {
-    throw new Error("Failed to create probe session");
-  }
-
-  const probeSessionId = session.data.id;
-
-  try {
-    const prompt = await client.session.prompt({
-      path: { id: probeSessionId },
-      body: {
-        agent: AGENTS.probe,
-        tools: {},
-        parts: [{ type: "text", text: formatBranchContext(state, branchId) }],
-      },
-    });
-
-    if (!prompt.data) {
-      throw new Error("Failed to get probe response");
-    }
-
-    return parseProbeResponse(prompt.data.parts);
-  } finally {
-    await client.session.delete({ path: { id: probeSessionId } }).catch((_error: unknown) => {
-      /* cleanup errors are non-fatal */
-    });
-  }
+async function runProbeAgent(probe: ProbeRunner, state: BrainstormState, branchId: string): Promise<ProbeResult> {
+  const reply = await probe.run(AGENTS.probe, formatBranchContext(state, branchId));
+  return parseProbeResponse(reply);
 }
 
 function findBranchForQuestion(state: BrainstormState, questionId: string): string | null {
@@ -186,7 +150,7 @@ export async function processAnswer(
   browserSessionId: string,
   questionId: string,
   answer: Answer,
-  client: OpencodeClient,
+  probe: ProbeRunner,
 ): Promise<void> {
   const state = await stateStore.getSession(sessionId);
   if (!state) return;
@@ -208,6 +172,6 @@ export async function processAnswer(
   const branch = updatedState.branches[branchId];
   if (!branch || branch.status === BRANCH_STATUSES.DONE) return;
 
-  const probe = await runProbeAgent(client, updatedState, branchId);
-  await handleProbeResult(probe, stateStore, sessions, sessionId, browserSessionId, branchId, branch.scope);
+  const verdict = await runProbeAgent(probe, updatedState, branchId);
+  await handleProbeResult(verdict, stateStore, sessions, sessionId, browserSessionId, branchId, branch.scope);
 }

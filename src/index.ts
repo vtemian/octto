@@ -1,12 +1,14 @@
-import type { Plugin } from "@opencode-ai/plugin";
+import type { Plugin, PluginInput } from "@opencode-ai/plugin";
 import type { AgentConfig } from "@opencode-ai/sdk";
 
-import { AGENTS, agents } from "@/agents";
+import { AGENTS, type AgentName, agents } from "@/agents";
 import { loadCustomConfig } from "@/config";
 import { createFragmentInjector, getAgentSystemPromptPrefix, warnUnknownAgents } from "@/hooks";
 import { createSessionStore } from "@/session";
-import type { OcttoTool } from "@/tools";
-import { createOcttoTools, outputText } from "@/tools";
+import type { OcttoTool, ProbeRunner } from "@/tools";
+import { createOcttoTools } from "@/tools";
+
+type Client = PluginInput["client"];
 
 /**
  * Layers octto's agents onto whatever the host resolved so far.
@@ -29,9 +31,9 @@ function mergeAgents(existing: ResolvedAgents | undefined, ours: Record<string, 
 }
 
 function wrapWithTracking(tool: OcttoTool, tracked: Map<string, Set<string>>): void {
-  const originalExecute = tool.execute;
+  const originalExecute = tool.execute.bind(tool);
   tool.execute = async (args, toolCtx) => {
-    const executeOutput = await originalExecute(args, toolCtx);
+    const output = await originalExecute(args, toolCtx);
 
     // A tool result can mention several session ids (create_brainstorm returns
     // both the state session and the browser session that owns the server).
@@ -41,12 +43,43 @@ function wrapWithTracking(tool: OcttoTool, tracked: Map<string, Set<string>>): v
         tracked.set(toolCtx.sessionID, new Set());
       }
       const octtoSessions = tracked.get(toolCtx.sessionID);
-      for (const match of outputText(executeOutput).matchAll(/ses_[a-z0-9]+/g)) {
+      for (const match of output.matchAll(/ses_[a-z0-9]+/g)) {
         octtoSessions?.add(match[0]);
       }
     }
 
-    return executeOutput;
+    return output;
+  };
+}
+
+function joinTextParts(parts: readonly { type: string; text?: unknown }[]): string {
+  return parts
+    .filter((part) => part.type === "text" && typeof part.text === "string")
+    .map((part) => String(part.text))
+    .join("");
+}
+
+// Temporary: the v1 host adapter takes this over once src/host/ lands.
+function createClientProbe(client: Client): ProbeRunner {
+  return {
+    async run(agent: AgentName, text: string): Promise<string> {
+      const session = await client.session.create({ body: { title: `probe-${agent}` } });
+      if (!session.data) throw new Error("Failed to create probe session");
+      const sessionId = session.data.id;
+
+      try {
+        const prompt = await client.session.prompt({
+          path: { id: sessionId },
+          body: { agent, tools: {}, parts: [{ type: "text", text }] },
+        });
+        if (!prompt.data) throw new Error("Failed to get probe response");
+        return joinTextParts(prompt.data.parts);
+      } finally {
+        await client.session.delete({ path: { id: sessionId } }).catch((_error: unknown) => {
+          /* cleanup errors are non-fatal */
+        });
+      }
+    },
   };
 }
 
@@ -64,7 +97,7 @@ const Octto: Plugin = async ({ client, directory }) => {
   warnUnknownAgents(customConfig.fragments);
   const sessions = createSessionStore({ port: customConfig.port });
   const tracked = new Map<string, Set<string>>();
-  const tools = createOcttoTools(sessions, client);
+  const tools = createOcttoTools(sessions, createClientProbe(client));
 
   wrapWithTracking(tools.start_session, tracked);
   // Brainstorm browser sessions are created inside create_brainstorm, not via

@@ -1,7 +1,8 @@
-import { tool } from "@opencode-ai/plugin/tool";
+import { z } from "zod";
 
 import type { SessionStore } from "@/session";
 
+import { defineTool } from "./define";
 import type { OcttoTool, OcttoTools } from "./types";
 
 function formatSessionStarted(session: { session_id: string; url: string; question_ids?: string[] }): string {
@@ -42,10 +43,10 @@ start_session(
 
 Please call start_session again WITH your prepared questions.`;
 
-const questionsSchema = tool.schema
+const questionsSchema = z
   .array(
-    tool.schema.object({
-      type: tool.schema
+    z.object({
+      type: z
         .enum([
           "pick_one",
           "pick_many",
@@ -65,39 +66,39 @@ const questionsSchema = tool.schema
           "rate",
         ])
         .describe("Question type"),
-      config: tool.schema
+      config: z
         .looseObject({
-          question: tool.schema.string().optional(),
-          context: tool.schema.string().optional(),
-          options: tool.schema.any().optional(),
-          min: tool.schema.any().optional(),
-          max: tool.schema.any().optional(),
-          step: tool.schema.any().optional(),
-          recommended: tool.schema.any().optional(),
-          allowOther: tool.schema.any().optional(),
-          allowFeedback: tool.schema.any().optional(),
-          allowCancel: tool.schema.any().optional(),
-          defaultValue: tool.schema.any().optional(),
-          labels: tool.schema.any().optional(),
-          emojis: tool.schema.any().optional(),
-          yesLabel: tool.schema.any().optional(),
-          noLabel: tool.schema.any().optional(),
-          before: tool.schema.any().optional(),
-          after: tool.schema.any().optional(),
-          filePath: tool.schema.any().optional(),
-          language: tool.schema.any().optional(),
-          content: tool.schema.any().optional(),
-          sections: tool.schema.any().optional(),
-          markdown: tool.schema.any().optional(),
-          placeholder: tool.schema.any().optional(),
-          multiline: tool.schema.any().optional(),
-          minLength: tool.schema.any().optional(),
-          maxLength: tool.schema.any().optional(),
-          accept: tool.schema.any().optional(),
-          multiple: tool.schema.any().optional(),
-          maxImages: tool.schema.any().optional(),
-          maxFiles: tool.schema.any().optional(),
-          maxSize: tool.schema.any().optional(),
+          question: z.string().optional(),
+          context: z.string().optional(),
+          options: z.any().optional(),
+          min: z.any().optional(),
+          max: z.any().optional(),
+          step: z.any().optional(),
+          recommended: z.any().optional(),
+          allowOther: z.any().optional(),
+          allowFeedback: z.any().optional(),
+          allowCancel: z.any().optional(),
+          defaultValue: z.any().optional(),
+          labels: z.any().optional(),
+          emojis: z.any().optional(),
+          yesLabel: z.any().optional(),
+          noLabel: z.any().optional(),
+          before: z.any().optional(),
+          after: z.any().optional(),
+          filePath: z.any().optional(),
+          language: z.any().optional(),
+          content: z.any().optional(),
+          sections: z.any().optional(),
+          markdown: z.any().optional(),
+          placeholder: z.any().optional(),
+          multiline: z.any().optional(),
+          minLength: z.any().optional(),
+          maxLength: z.any().optional(),
+          accept: z.any().optional(),
+          multiple: z.any().optional(),
+          maxImages: z.any().optional(),
+          maxFiles: z.any().optional(),
+          maxSize: z.any().optional(),
         })
         .describe("Question config (varies by type)"),
     }),
@@ -105,12 +106,12 @@ const questionsSchema = tool.schema
   .describe("REQUIRED: Initial questions to display when browser opens. Must have at least 1.");
 
 function buildStartSession(sessions: SessionStore): OcttoTool {
-  return tool({
+  return defineTool({
     description: `Start an interactive octto session with initial questions.
 Opens a browser window with questions already displayed - no waiting.
 REQUIRED: You MUST provide at least 1 question. Will fail without questions.`,
     args: {
-      title: tool.schema.string().optional().describe("Session title (shown in browser)"),
+      title: z.string().optional().describe("Session title (shown in browser)"),
       questions: questionsSchema,
     },
     execute: async (args) => {
@@ -129,11 +130,11 @@ REQUIRED: You MUST provide at least 1 question. Will fail without questions.`,
 }
 
 function buildEndSession(sessions: SessionStore): OcttoTool {
-  return tool({
+  return defineTool({
     description: `End an interactive octto session.
 Closes the browser window and cleans up resources.`,
     args: {
-      session_id: tool.schema.string().describe("Session ID to end"),
+      session_id: z.string().describe("Session ID to end"),
     },
     execute: async (args) => {
       const ended = await sessions.endSession(args.session_id);

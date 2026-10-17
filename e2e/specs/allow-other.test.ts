@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { type CdpSession, connect, waitForTarget, waitInPage } from "./cdp";
+import { type CdpSession, connect, targetIds, waitForTarget, waitInPage } from "./cdp";
 import {
   cdpPort,
   octtoPort,
@@ -44,11 +44,13 @@ describe("octto inside a real opencode session", () => {
   });
 
   it("should open a real browser and round-trip an allowOther freetext answer back to the agent", async () => {
+    // Tabs earlier specs left open under the same port must not be mistaken for ours.
+    const before = await targetIds(cdpPort());
     run = spawnOpencode(home, "build", "Ask the user which datastore we should use.");
 
     // Reaching this tab proves octto's openBrowser() -> xdg-open path worked,
     // not merely that its HTTP server was listening.
-    const target = await waitForTarget(cdpPort(), `http://localhost:${octtoPort()}`, TAB_TIMEOUT_MS);
+    const target = await waitForTarget(cdpPort(), `http://localhost:${octtoPort()}`, TAB_TIMEOUT_MS, before);
     page = await connect(target.webSocketDebuggerUrl ?? "");
 
     await waitInPage(

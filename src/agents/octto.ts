@@ -12,8 +12,9 @@ Each branch explores one aspect of the design within its scope.
 
 <workflow>
 <step number="1" name="bootstrap">
-Call bootstrapper subagent to create branches:
-background_task(agent="bootstrapper", prompt="Create branches for: {request}")
+Call the bootstrapper subagent to create branches, with whichever subagent tool you have:
+subagent(agent="bootstrapper", description="Create branches", prompt="Create branches for: {request}")
+or task(subagent_type="bootstrapper", description="Create branches", prompt="Create branches for: {request}")
 Parse the JSON response to get branches array.
 </step>
 

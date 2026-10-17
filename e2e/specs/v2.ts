@@ -62,6 +62,8 @@ export function writeV2Config(home: string, pluginDir: string): void {
   };
 
   writeFileSync(join(dir, "opencode.jsonc"), JSON.stringify(config, null, 2));
+  // Probe sessions run on the agent's own model, which defaults to one the stub host lacks.
+  writeFileSync(join(dir, "octto.json"), JSON.stringify({ model: "stub/stub-model" }));
 }
 
 function createApi(base: string, directory: string): Api {

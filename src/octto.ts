@@ -10,6 +10,8 @@ export interface OcttoOptions {
   /** Project directory the host loaded octto for; fragments are read from here. */
   readonly directory: string;
   readonly probe: ProbeRunner;
+  /** Where octto.json lives; defaults to ~/.config/opencode. */
+  readonly configDir?: string;
 }
 
 export interface Octto {
@@ -23,8 +25,8 @@ export interface Octto {
 
 const TRACKED_TOOLS = ["start_session", "create_brainstorm"] as const;
 
-export async function createOctto({ directory, probe }: OcttoOptions): Promise<Octto> {
-  const customConfig = await loadCustomConfig(agents);
+export async function createOctto({ directory, probe, configDir }: OcttoOptions): Promise<Octto> {
+  const customConfig = await loadCustomConfig(agents, configDir);
   const fragments = await createFragmentInjector({ projectDir: directory }, customConfig.fragments);
 
   for (const agentName of Object.values(AGENTS)) {

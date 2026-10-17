@@ -1,4 +1,4 @@
-import type { Plugin } from "@opencode/plugin";
+import type { Model, Plugin } from "@opencode/plugin";
 import type { AgentEditor } from "@opencode/plugin/promise/agent";
 import type { Info as ToolInfo } from "@opencode/plugin/promise/tool";
 import type { AgentConfig } from "@opencode-ai/sdk";
@@ -12,8 +12,9 @@ import type { OcttoTool, ProbeRunner } from "@/tools";
 export type V2Host = Pick<Plugin.Context, "location" | "tool" | "agent" | "event" | "session">;
 
 type AgentRecord = Parameters<Parameters<AgentEditor["update"]>[1]>[0];
-type ModelRef = NonNullable<AgentRecord["model"]>;
+type ModelRef = ReturnType<typeof Model.Ref.parse>;
 type Apply = (agent: AgentRecord) => void;
+type Models = ReadonlyMap<string, ModelRef>;
 type V2Tool = ToolInfo<z.ZodObject<z.ZodRawShape>, undefined>;
 type SessionMessage = Awaited<ReturnType<V2Host["session"]["context"]>>[number];
 type AssistantReply = Extract<SessionMessage, { type: "assistant" }>;
@@ -28,15 +29,21 @@ const deletedSessionSchema = z.object({ data: z.object({ sessionID: z.string() }
 /** The v1 SDK's AgentConfig declares no `variant`, but octto's custom config may carry one. */
 const variantSchema = z.object({ variant: z.string().optional() });
 
-export async function setup(host: V2Host): Promise<Plugin.Cleanup> {
-  const octto = await createOctto({ directory: host.location.directory, probe: createSessionProbe(host.session) });
+export async function setup(host: V2Host, configDir?: string): Promise<Plugin.Cleanup> {
+  // Filled once the agent models resolve, before any tool can run a probe.
+  const models = new Map<string, ModelRef>();
+  const octto = await createOctto({
+    directory: host.location.directory,
+    probe: createSessionProbe(host.session, models),
+    configDir,
+  });
 
   await host.tool.transform((editor) => {
     for (const [name, core] of Object.entries(octto.tools)) {
       editor.add(toV2Tool(name, core));
     }
   });
-  await registerAgents(host, octto);
+  await registerAgents(host, octto, models);
   const stopWatching = watchSessionDeletes(host, octto);
 
   return async () => {
@@ -49,13 +56,19 @@ export async function toAgentInfo(agent: AgentRecord, config: AgentConfig): Prom
   applyConfig(agent, config, await resolveModel(config));
 }
 
-export function createSessionProbe(session: V2Host["session"]): ProbeRunner {
+/**
+ * v2 takes a session's model only from `session.create`, never from its agent,
+ * so the probe passes the agent's resolved model itself.
+ */
+export function createSessionProbe(session: V2Host["session"], models: Models): ProbeRunner {
   return {
     async run(agent: AgentName, text: string): Promise<string> {
+      const model = models.get(agent);
       const { id: sessionID } = await session.create({
         title: `${PROBE_TITLE_PREFIX}${agent}`,
         agent,
         permissions: [...DENY_ALL_TOOLS],
+        ...(model ? { model } : {}),
       });
       try {
         await session.prompt({ sessionID, text });
@@ -93,7 +106,15 @@ async function resolveModel(config: AgentConfig): Promise<ModelRef | undefined> 
   // Dynamic on purpose: the v1 host must never load the v2 SDK.
   const { Model } = await import("@opencode/plugin");
   const variant = variantOf(config);
-  return Model.Ref.parse(variant ? `${config.model}#${variant}` : config.model);
+  const reference = variant ? `${config.model}#${variant}` : config.model;
+  try {
+    return Model.Ref.parse(reference);
+  } catch (error: unknown) {
+    // A throw here would fail setup and the host would drop octto entirely;
+    // v1 only fails the misconfigured agent, so fall back to the host default.
+    console.warn(`[octto] ignoring model "${reference}", using the host default:`, error);
+    return undefined;
+  }
 }
 
 function applyConfig(agent: AgentRecord, config: AgentConfig, model: ModelRef | undefined): void {
@@ -109,10 +130,11 @@ function lockDownProbe(agent: AgentRecord): void {
   agent.permissions = [...DENY_ALL_TOOLS];
 }
 
-async function prepareAgents(octto: Octto): Promise<ReadonlyMap<string, Apply>> {
+async function prepareAgents(octto: Octto, models: Map<string, ModelRef>): Promise<ReadonlyMap<string, Apply>> {
   const prepared = new Map<string, Apply>();
   for (const [name, config] of Object.entries(octto.agents)) {
     const model = await resolveModel(config);
+    if (model !== undefined) models.set(name, model);
     prepared.set(name, (agent) => {
       applyConfig(agent, config, model);
       if (name === AGENTS.probe) lockDownProbe(agent);
@@ -121,10 +143,10 @@ async function prepareAgents(octto: Octto): Promise<ReadonlyMap<string, Apply>> 
   return prepared;
 }
 
-async function registerAgents(host: V2Host, octto: Octto): Promise<void> {
+async function registerAgents(host: V2Host, octto: Octto, models: Map<string, ModelRef>): Promise<void> {
   // The host replays transforms synchronously, so the branded model refs are
   // resolved up front and the callback only assigns.
-  const prepared = await prepareAgents(octto);
+  const prepared = await prepareAgents(octto, models);
   await host.agent.transform((editor) => {
     for (const [name, apply] of prepared) {
       editor.update(name, apply);
@@ -146,8 +168,8 @@ function isCompleted(reply: AssistantReply): boolean {
 
 /**
  * Mirrors the host's own subagent reader: only a completed, error-free turn
- * counts. v1 threw on a failed probe; keeping that contract means a provider
- * outage is logged by the brainstorm loop instead of recorded as a finding.
+ * counts. Throwing lets the processor close the branch with the provider's
+ * reason instead of parsing an empty reply.
  */
 function lastAssistantText(messages: readonly SessionMessage[]): string {
   const completed = messages.filter(isAssistant).filter(isCompleted);

@@ -1,8 +1,12 @@
-import { afterEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 // start_session opens a browser for real. Mock before the adapter's module graph loads.
 mock.module("../../src/session/browser", () => ({ openBrowser: async () => {} }));
 
+import { Model } from "@opencode/plugin";
 import type { AgentConfig } from "@opencode-ai/sdk";
 
 import { createSessionProbe, setup, toAgentInfo, type V2Host } from "../../src/host/v2";
@@ -111,15 +115,26 @@ async function waitUntil(condition: () => Promise<boolean>, timeoutMs = 2000): P
 
 describe("v2 setup", () => {
   let cleanup: (() => Promise<void> | void) | undefined;
+  let configDir: string;
+
+  // Without this, setup() reads the developer's own ~/.config/opencode/octto.json.
+  beforeEach(() => {
+    configDir = mkdtempSync(join(tmpdir(), "octto-v2-config-"));
+  });
 
   afterEach(async () => {
     await cleanup?.();
     cleanup = undefined;
+    rmSync(configDir, { recursive: true, force: true });
   });
+
+  function writeOcttoConfig(config: unknown): void {
+    writeFileSync(join(configDir, "octto.json"), JSON.stringify(config));
+  }
 
   it("registers every octto tool with a zod input and string content", async () => {
     const { host, tools } = createHost();
-    cleanup = await setup(host);
+    cleanup = await setup(host, configDir);
 
     const start = tools.get("start_session");
     expect(start).toBeDefined();
@@ -136,7 +151,7 @@ describe("v2 setup", () => {
 
   it("upserts the three agents", async () => {
     const { host, agents } = createHost();
-    cleanup = await setup(host);
+    cleanup = await setup(host, configDir);
 
     expect([...agents.keys()].sort()).toEqual(["bootstrapper", "octto", "probe"]);
     const octto = agents.get("octto")!;
@@ -146,9 +161,28 @@ describe("v2 setup", () => {
     expect(octto.request.body.temperature).toBe(0.7);
   });
 
+  it("still loads when octto.json names a model without a provider, falling back to the host default", async () => {
+    writeOcttoConfig({ model: "gpt-5" });
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    const { host, tools, agents } = createHost();
+
+    try {
+      cleanup = await setup(host, configDir);
+      expect(warn).toHaveBeenCalledWith(
+        '[octto] ignoring model "gpt-5", using the host default:',
+        expect.objectContaining({ message: "Invalid model reference: gpt-5" }),
+      );
+    } finally {
+      warn.mockRestore();
+    }
+
+    expect(tools.has("create_brainstorm")).toBe(true);
+    expect(agents.get("octto")!.model).toBeUndefined();
+  });
+
   it("denies every tool to the probe agent, which only reads user answers", async () => {
     const { host, agents } = createHost();
-    cleanup = await setup(host);
+    cleanup = await setup(host, configDir);
 
     expect(agents.get("probe")!.permissions).toEqual([{ action: "*", resource: "*", effect: "deny" }]);
     expect(agents.get("octto")!.permissions).toEqual([]);
@@ -156,7 +190,7 @@ describe("v2 setup", () => {
 
   it("keeps relaying session deletes after one handler throws", async () => {
     const { host, tools, emit } = createHost();
-    cleanup = await setup(host);
+    cleanup = await setup(host, configDir);
     const started = await tools
       .get("start_session")!
       .execute({ title: "t", questions: [{ type: "confirm", config: { question: "Go?" } }] }, { sessionID: "host_2" });
@@ -183,7 +217,7 @@ describe("v2 setup", () => {
 
   it("ends octto sessions when the host session is deleted", async () => {
     const { host, tools, emit } = createHost();
-    cleanup = await setup(host);
+    cleanup = await setup(host, configDir);
 
     const started = await tools
       .get("start_session")!
@@ -245,7 +279,7 @@ describe("createSessionProbe", () => {
   it("creates, prompts, waits, reads the last assistant text and removes the session", async () => {
     const { host, sessions } = createHost();
 
-    const text = await createSessionProbe(host.session).run("probe", "ctx");
+    const text = await createSessionProbe(host.session, new Map()).run("probe", "ctx");
 
     expect(text).toBe('{"done": true, "finding": "f"}');
     expect(sessions.created[0]).toEqual({
@@ -258,6 +292,15 @@ describe("createSessionProbe", () => {
     expect(sessions.removed).toEqual(["ses_probe"]);
   });
 
+  it("creates the session on the agent's model, since v2 never reads a session model from its agent", async () => {
+    const { host, sessions } = createHost();
+    const model = Model.Ref.parse("cap2/probe-model#high");
+
+    await createSessionProbe(host.session, new Map([["probe", model]])).run("probe", "ctx");
+
+    expect(sessions.created[0].model).toEqual({ providerID: "cap2", id: "probe-model", variant: "high" });
+  });
+
   it("removes the session even when the prompt fails", async () => {
     const { host, sessions } = createHost();
     const failing = {
@@ -267,19 +310,19 @@ describe("createSessionProbe", () => {
       },
     };
 
-    await expect(createSessionProbe(failing as unknown as V2Host["session"]).run("probe", "ctx")).rejects.toThrow(
-      "model down",
-    );
+    await expect(
+      createSessionProbe(failing as unknown as V2Host["session"], new Map()).run("probe", "ctx"),
+    ).rejects.toThrow("model down");
     expect(sessions.removed).toEqual(["ses_probe"]);
   });
 
-  it("throws when no completed assistant reply came back, so the failure is logged rather than recorded", async () => {
+  it("throws when no completed assistant reply came back, rather than returning empty text", async () => {
     const { host, sessions } = createHost();
     const silent = { ...host.session, context: async () => [] };
 
-    await expect(createSessionProbe(silent as unknown as V2Host["session"]).run("probe", "ctx")).rejects.toThrow(
-      "no completed reply",
-    );
+    await expect(
+      createSessionProbe(silent as unknown as V2Host["session"], new Map()).run("probe", "ctx"),
+    ).rejects.toThrow("no completed reply");
     expect(sessions.removed).toEqual(["ses_probe"]);
   });
 
@@ -297,9 +340,9 @@ describe("createSessionProbe", () => {
       ],
     };
 
-    await expect(createSessionProbe(errored as unknown as V2Host["session"]).run("probe", "ctx")).rejects.toThrow(
-      "Model not found: openai/gpt-5.3-codex",
-    );
+    await expect(
+      createSessionProbe(errored as unknown as V2Host["session"], new Map()).run("probe", "ctx"),
+    ).rejects.toThrow("Model not found: openai/gpt-5.3-codex");
   });
 
   it("skips an assistant message that is still streaming", async () => {
@@ -312,7 +355,7 @@ describe("createSessionProbe", () => {
       ],
     };
 
-    const text = await createSessionProbe(streaming as unknown as V2Host["session"]).run("probe", "ctx");
+    const text = await createSessionProbe(streaming as unknown as V2Host["session"], new Map()).run("probe", "ctx");
 
     expect(text).toBe("done one");
   });

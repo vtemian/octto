@@ -28,7 +28,8 @@
     "lint:biome": "biome lint .",
     "lint:eslint": "eslint .",
     "check": "biome check . && eslint . && bun run typecheck && bun test tests",
-    "test:e2e": "docker build -f e2e/Dockerfile -t octto-e2e . && docker run --rm octto-e2e"
+    "test:e2e": "docker build -f e2e/Dockerfile -t octto-e2e . && docker run --rm octto-e2e",
+    "test:e2e:v2": "docker build -f e2e/Dockerfile.v2 -t octto-e2e-v2 . && docker run --rm octto-e2e-v2"
   },
   "keywords": [
     "opencode",

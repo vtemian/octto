@@ -1,0 +1,33 @@
+# OpenCode 2 tier. No browser: octto's questions are answered over its websocket,
+# and xdg-open is a no-op so the plugin's browser launch cannot interfere.
+FROM oven/bun:1-debian
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates \
+      curl \
+      git \
+      unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+# The v1 installer at opencode.ai/install refuses 2.x; v2 has its own.
+RUN curl -fsSL https://opencode.ai/v2/install | bash \
+    && OPENCODE_BIN="$(find / -type f -name opencode -perm -u+x 2>/dev/null | head -1)" \
+    && test -n "${OPENCODE_BIN}" \
+    && ln -sf "${OPENCODE_BIN}" /usr/local/bin/opencode \
+    && opencode --version
+
+RUN printf '#!/bin/sh\nexit 0\n' > /usr/local/bin/xdg-open && chmod +x /usr/local/bin/xdg-open
+
+WORKDIR /work
+
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile --ignore-scripts
+
+COPY . .
+RUN bun run build
+
+ENV OCTTO_PORT=7777 \
+    STUB_PORT=8787 \
+    OCTTO_PLUGIN_DIR=/work
+
+CMD ["bun", "test", "e2e/v2", "--timeout", "300000"]

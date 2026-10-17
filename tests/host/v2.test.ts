@@ -139,7 +139,7 @@ describe("v2 setup", () => {
     const octto = agents.get("octto")!;
     expect(octto.mode).toBe("primary");
     expect(octto.system).toContain("brainstorming");
-    expect(octto.model).toEqual({ providerID: "openai", id: "gpt-5.2-codex" });
+    expect(octto.model).toEqual({ providerID: "openai", id: "gpt-5.3-codex" });
     expect(octto.request.body.temperature).toBe(0.7);
   });
 
@@ -207,7 +207,7 @@ describe("toAgentInfo", () => {
     const config: AgentConfig & { maxSteps?: number; variant?: string } = {
       description: "d",
       mode: "subagent",
-      model: "openai/gpt-5.2-codex",
+      model: "openai/gpt-5.3-codex",
       variant: "high",
       temperature: 0.5,
       maxSteps: 7,
@@ -219,7 +219,7 @@ describe("toAgentInfo", () => {
     expect(agent.description).toBe("d");
     expect(agent.mode).toBe("subagent");
     expect(agent.system).toBe("sys");
-    expect(agent.model).toEqual({ providerID: "openai", id: "gpt-5.2-codex", variant: "high" });
+    expect(agent.model).toEqual({ providerID: "openai", id: "gpt-5.3-codex", variant: "high" });
     expect(agent.request.body.temperature).toBe(0.5);
     expect(agent.steps).toBe(7);
   });
@@ -288,14 +288,14 @@ describe("createSessionProbe", () => {
         {
           type: "assistant",
           time: { created: 1, completed: 2 },
-          error: { type: "ProviderModelNotFoundError", message: "Model not found: openai/gpt-5.2-codex" },
+          error: { type: "ProviderModelNotFoundError", message: "Model not found: openai/gpt-5.3-codex" },
           content: [],
         },
       ],
     };
 
     await expect(createSessionProbe(errored as unknown as V2Host["session"]).run("probe", "ctx")).rejects.toThrow(
-      "Model not found: openai/gpt-5.2-codex",
+      "Model not found: openai/gpt-5.3-codex",
     );
   });
 

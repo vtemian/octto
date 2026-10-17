@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OpenCode 2 support. The package default-exports `{ id, setup, server }`: OpenCode 2 loads it through `setup()`, OpenCode 1 (1.18.29 or newer) through `server()`.
 
 ### Changed
+- Default agent model moved from `openai/gpt-5.2-codex`, which both hosts dropped from their catalogues, to `openai/gpt-5.3-codex`. Override it in `octto.json` as before.
 - **Breaking:** OpenCode 1 releases older than 1.18.29 are no longer supported; they expect a function default export.
 - Tools are defined host-agnostically on zod and the probe agent is called through a `ProbeRunner`, so both hosts share one core.
 - `@opencode/plugin` 2.0.31 is a dev dependency for types only; OpenCode 2 supplies the runtime module and the bundle keeps it external.

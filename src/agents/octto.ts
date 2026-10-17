@@ -3,7 +3,7 @@ import type { AgentConfig } from "@opencode-ai/sdk";
 export const agent: AgentConfig = {
   description: "Runs interactive brainstorming sessions using branch-based exploration",
   mode: "primary",
-  model: "openai/gpt-5.2-codex",
+  model: "openai/gpt-5.3-codex",
   temperature: 0.7,
   prompt: `<purpose>
 Run brainstorming sessions using branch-based exploration.

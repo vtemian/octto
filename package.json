@@ -16,7 +16,7 @@
   },
   "scripts": {
     "prepare": "lefthook install",
-    "build": "bun build src/index.ts --outdir dist --target bun --format esm && tsc --emitDeclarationOnly",
+    "build": "bun build src/index.ts --outdir dist --target bun --format esm --external @opencode/plugin && tsc --emitDeclarationOnly",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "bun run clean && bun run check && bun run build",
@@ -45,6 +45,7 @@
   },
   "dependencies": {
     "@opencode-ai/plugin": "1.18.31",
+    "@opencode/plugin": "2.0.31",
     "valibot": "^1.2.0",
     "zod": "^4.3.5"
   },

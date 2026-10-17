@@ -20,6 +20,8 @@ const ProbeResultSchema = v.object({
 
 type ProbeResult = v.InferOutput<typeof ProbeResultSchema>;
 
+const PROBE_FAILED_PREFIX = "Probe failed: ";
+
 function formatBranchQuestions(questions: { type: string; text: string; answer?: unknown }[]): string[] {
   const lines: string[] = [];
   for (const q of questions) {
@@ -86,9 +88,19 @@ export function parseProbeResponse(text: string): ProbeResult {
   return parsed.output;
 }
 
+/**
+ * A failed probe turn closes the branch with the reason instead of throwing:
+ * the answer is already recorded, so a throw leaves the branch exploring with
+ * nothing pending and stalls the brainstorm before plan review.
+ */
 async function runProbeAgent(probe: ProbeRunner, state: BrainstormState, branchId: string): Promise<ProbeResult> {
-  const reply = await probe.run(AGENTS.probe, formatBranchContext(state, branchId));
-  return parseProbeResponse(reply);
+  try {
+    const reply = await probe.run(AGENTS.probe, formatBranchContext(state, branchId));
+    return parseProbeResponse(reply);
+  } catch (error: unknown) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return { done: true, finding: `${PROBE_FAILED_PREFIX}${reason}` };
+  }
 }
 
 function findBranchForQuestion(state: BrainstormState, questionId: string): string | null {

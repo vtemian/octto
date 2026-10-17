@@ -132,7 +132,7 @@ describe("processAnswer", () => {
     expect(updated?.branches.b1.finding).toBe("Probe returned no question");
   });
 
-  it("propagates a probe failure so the caller can log it", async () => {
+  it("closes the branch with the failure reason when the probe fails, so the brainstorm does not stall", async () => {
     const { browserSession, question_id } = await seedBranchQuestion();
     const failing = {
       run: async () => {
@@ -140,20 +140,20 @@ describe("processAnswer", () => {
       },
     };
 
-    await expect(
-      processAnswer(
-        stateStore,
-        sessions,
-        "ses_test",
-        browserSession.session_id,
-        question_id,
-        { choice: "yes" },
-        failing,
-      ),
-    ).rejects.toThrow("probe unavailable");
+    await processAnswer(
+      stateStore,
+      sessions,
+      "ses_test",
+      browserSession.session_id,
+      question_id,
+      { choice: "yes" },
+      failing,
+    );
 
     const updated = await stateStore.getSession("ses_test");
-    expect(updated?.branches.b1.status).not.toBe("done");
+    expect(updated?.branches.b1.status).toBe("done");
+    expect(updated?.branches.b1.finding).toBe("Probe failed: probe unavailable");
+    expect(updated?.branches.b1.questions[0].answer).toEqual({ choice: "yes" });
   });
 
   it("should silently return when session not found", async () => {

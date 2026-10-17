@@ -126,6 +126,9 @@ describe("v2 setup", () => {
     expect(tools.has("create_brainstorm")).toBe(true);
     expect(tools.has("push_question")).toBe(true);
     expect(typeof (start!.input as any)["~standard"]).toBe("object");
+    // Without codemode: false the host lists a plugin tool only inside Code Mode's
+    // execute() and the model's direct call fails with "No tool named ...".
+    expect((start as any).options).toEqual({ codemode: false });
 
     const result = await tools.get("list_questions")!.execute({}, { sessionID: "host_1" });
     expect(result.content).toBe("No questions found.");

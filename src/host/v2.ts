@@ -73,6 +73,9 @@ function toV2Tool(name: string, core: OcttoTool): V2Tool {
     name,
     description: core.description,
     input: z.object(core.args),
+    // Verified on 2.0.31: tools default to Code Mode only, and the agent prompts
+    // call these by name, so they must be listed as direct function tools.
+    options: { codemode: false },
     execute: async (input: unknown, context) => ({
       content: await core.execute(input, { sessionID: context.sessionID }),
     }),

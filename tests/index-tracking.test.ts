@@ -39,7 +39,7 @@ describe("session tracking (issue #58)", () => {
 
   it("should end the brainstorm browser session when the opencode session is deleted", async () => {
     const { default: plugin } = await import("../src");
-    const result = await plugin(createMockContext());
+    const result = await plugin.server(createMockContext());
 
     const executeOutput = await result.tool!.create_brainstorm.execute(
       {

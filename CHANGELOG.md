@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking:** OpenCode 1 releases older than 1.18.29 are no longer supported; they expect a function default export.
 - Tools are defined host-agnostically on zod and the probe agent is called through a `ProbeRunner`, so both hosts share one core.
 - `@opencode/plugin` 2.0.31 is a dev dependency for types only; OpenCode 2 supplies the runtime module and the bundle keeps it external.
+- A root `index.js` shim re-exports `dist/index.js`: OpenCode 2 resolves directory plugins by that file and ignores `package.json` exports.
 - zod is pinned to one copy via `overrides`, so the schemas handed to OpenCode 1 come from 4.3.5 instead of the SDK's nested 4.1.8.
 
 ## [0.4.5] - 2026-09-23

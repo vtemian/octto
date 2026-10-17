@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-10-17
+
+### Added
+- OpenCode 2 support. The package default-exports `{ id, setup, server }`: OpenCode 2 loads it through `setup()`, OpenCode 1 (1.18.29 or newer) through `server()`.
+
+### Changed
+- **Breaking:** OpenCode 1 releases older than 1.18.29 are no longer supported; they expect a function default export.
+- Tools are defined host-agnostically on zod and the probe agent is called through a `ProbeRunner`, so both hosts share one core.
+- `@opencode/plugin` 2.0.31 is a dev dependency for types only; OpenCode 2 supplies the runtime module and the bundle keeps it external.
+- zod is pinned to one copy via `overrides`, so the schemas handed to OpenCode 1 come from 4.3.5 instead of the SDK's nested 4.1.8.
+
 ## [0.4.5] - 2026-09-23
 
 ### Changed

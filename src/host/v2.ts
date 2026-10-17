@@ -4,7 +4,7 @@ import type { Info as ToolInfo } from "@opencode/plugin/promise/tool";
 import type { AgentConfig } from "@opencode-ai/sdk";
 import { z } from "zod";
 
-import type { AgentName } from "@/agents";
+import { AGENTS, type AgentName } from "@/agents";
 import { createOctto, type Octto } from "@/octto";
 import type { OcttoTool, ProbeRunner } from "@/tools";
 
@@ -21,6 +21,9 @@ type ReplyPart = AssistantReply["content"][number];
 
 const SESSION_DELETED = "session.deleted";
 const PROBE_TITLE_PREFIX = "probe-";
+/** The probe only reads user answers and emits JSON; v1 ran it with `tools: {}`. */
+const DENY_ALL_TOOLS = [{ action: "*", resource: "*", effect: "deny" }] as const;
+const deletedSessionSchema = z.object({ data: z.object({ sessionID: z.string() }) });
 
 /** The v1 SDK's AgentConfig declares no `variant`, but octto's custom config may carry one. */
 const variantSchema = z.object({ variant: z.string().optional() });
@@ -49,7 +52,11 @@ export async function toAgentInfo(agent: AgentRecord, config: AgentConfig): Prom
 export function createSessionProbe(session: V2Host["session"]): ProbeRunner {
   return {
     async run(agent: AgentName, text: string): Promise<string> {
-      const { id: sessionID } = await session.create({ title: `${PROBE_TITLE_PREFIX}${agent}`, agent });
+      const { id: sessionID } = await session.create({
+        title: `${PROBE_TITLE_PREFIX}${agent}`,
+        agent,
+        permissions: [...DENY_ALL_TOOLS],
+      });
       try {
         await session.prompt({ sessionID, text });
         await session.wait({ sessionID });
@@ -95,11 +102,18 @@ function applyConfig(agent: AgentRecord, config: AgentConfig, model: ModelRef | 
   if (config.maxSteps !== undefined) agent.steps = config.maxSteps;
 }
 
+function lockDownProbe(agent: AgentRecord): void {
+  agent.permissions = [...DENY_ALL_TOOLS];
+}
+
 async function prepareAgents(octto: Octto): Promise<ReadonlyMap<string, Apply>> {
   const prepared = new Map<string, Apply>();
   for (const [name, config] of Object.entries(octto.agents)) {
     const model = await resolveModel(config);
-    prepared.set(name, (agent) => applyConfig(agent, config, model));
+    prepared.set(name, (agent) => {
+      applyConfig(agent, config, model);
+      if (name === AGENTS.probe) lockDownProbe(agent);
+    });
   }
   return prepared;
 }
@@ -145,7 +159,21 @@ async function removeQuietly(session: V2Host["session"], sessionID: string): Pro
 async function relaySessionDeletes(host: V2Host, octto: Octto, signal: AbortSignal): Promise<void> {
   for await (const event of host.event.subscribe({ signal })) {
     if (event.type !== SESSION_DELETED) continue;
-    await octto.onSessionDeleted(event.data.sessionID);
+    await relayOne(octto, event);
+  }
+}
+
+/** One bad event must not end the subscription for the plugin's lifetime. */
+async function relayOne(octto: Octto, event: unknown): Promise<void> {
+  const parsed = deletedSessionSchema.safeParse(event);
+  if (!parsed.success) {
+    console.error("[octto] ignoring malformed session.deleted event:", parsed.error.message);
+    return;
+  }
+  try {
+    await octto.onSessionDeleted(parsed.data.data.sessionID);
+  } catch (error: unknown) {
+    console.error(`[octto] failed to end sessions for ${parsed.data.data.sessionID}:`, error);
   }
 }
 

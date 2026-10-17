@@ -142,6 +142,41 @@ describe("v2 setup", () => {
     expect(octto.request.body.temperature).toBe(0.7);
   });
 
+  it("denies every tool to the probe agent, which only reads user answers", async () => {
+    const { host, agents } = createHost();
+    cleanup = await setup(host);
+
+    expect(agents.get("probe")!.permissions).toEqual([{ action: "*", resource: "*", effect: "deny" }]);
+    expect(agents.get("octto")!.permissions).toEqual([]);
+  });
+
+  it("keeps relaying session deletes after one handler throws", async () => {
+    const { host, tools, emit } = createHost();
+    cleanup = await setup(host);
+    const started = await tools
+      .get("start_session")!
+      .execute({ title: "t", questions: [{ type: "confirm", config: { question: "Go?" } }] }, { sessionID: "host_2" });
+    const url = String(started.content).match(/http:\/\/localhost:\d+\/\?token=[a-f0-9]+/)?.[0];
+    const quiet = console.error;
+    console.error = () => {};
+
+    try {
+      emit({ type: "session.deleted" });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      emit({ type: "session.deleted", data: { sessionID: "host_2" } });
+
+      await waitUntil(() =>
+        fetch(url!).then(
+          () => false,
+          () => true,
+        ),
+      );
+      await expect(fetch(url!)).rejects.toThrow();
+    } finally {
+      console.error = quiet;
+    }
+  });
+
   it("ends octto sessions when the host session is deleted", async () => {
     const { host, tools, emit } = createHost();
     cleanup = await setup(host);
@@ -209,7 +244,11 @@ describe("createSessionProbe", () => {
     const text = await createSessionProbe(host.session).run("probe", "ctx");
 
     expect(text).toBe('{"done": true, "finding": "f"}');
-    expect(sessions.created[0]).toEqual({ title: "probe-probe", agent: "probe" });
+    expect(sessions.created[0]).toEqual({
+      title: "probe-probe",
+      agent: "probe",
+      permissions: [{ action: "*", resource: "*", effect: "deny" }],
+    });
     expect(sessions.prompted[0]).toEqual({ sessionID: "ses_probe", text: "ctx" });
     expect(sessions.waited).toEqual(["ses_probe"]);
     expect(sessions.removed).toEqual(["ses_probe"]);

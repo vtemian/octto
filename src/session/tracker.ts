@@ -29,7 +29,7 @@ export function createTracker(endSession: (sessionId: string) => Promise<void>):
           // state session and the browser session). Track them all: endSession
           // no-ops on ids the session store does not own.
           const output = await tool.execute(args, call);
-          if (call.sessionID) remember(call.sessionID, text(output));
+          if (call.sessionID) remember(call.sessionID, output);
           return output;
         },
       };
@@ -44,9 +44,4 @@ export function createTracker(endSession: (sessionId: string) => Promise<void>):
       }
     },
   };
-}
-
-// Goes away once the tools refactor makes execute() return a plain string.
-function text(output: string | { readonly output: string }): string {
-  return typeof output === "string" ? output : output.output;
 }

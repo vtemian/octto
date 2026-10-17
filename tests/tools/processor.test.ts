@@ -132,6 +132,30 @@ describe("processAnswer", () => {
     expect(updated?.branches.b1.finding).toBe("Probe returned no question");
   });
 
+  it("propagates a probe failure so the caller can log it", async () => {
+    const { browserSession, question_id } = await seedBranchQuestion();
+    const failing = {
+      run: async () => {
+        throw new Error("probe unavailable");
+      },
+    };
+
+    await expect(
+      processAnswer(
+        stateStore,
+        sessions,
+        "ses_test",
+        browserSession.session_id,
+        question_id,
+        { choice: "yes" },
+        failing,
+      ),
+    ).rejects.toThrow("probe unavailable");
+
+    const updated = await stateStore.getSession("ses_test");
+    expect(updated?.branches.b1.status).not.toBe("done");
+  });
+
   it("should silently return when session not found", async () => {
     const { runner, calls } = createProbe({ done: true });
     await processAnswer(

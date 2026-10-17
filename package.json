@@ -45,7 +45,6 @@
   },
   "dependencies": {
     "@opencode-ai/plugin": "1.18.31",
-    "@opencode/plugin": "2.0.31",
     "valibot": "^1.2.0",
     "zod": "^4.3.5"
   },
@@ -55,6 +54,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.3.10",
     "@eslint/js": "^10.0.1",
+    "@opencode/plugin": "2.0.31",
     "bun-types": "latest",
     "eslint": "^10.0.3",
     "eslint-plugin-sonarjs": "^4.0.2",

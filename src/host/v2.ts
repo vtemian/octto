@@ -137,9 +137,20 @@ function isText(part: ReplyPart): part is Extract<ReplyPart, { type: "text" }> {
   return part.type === "text";
 }
 
+function isCompleted(reply: AssistantReply): boolean {
+  return reply.time.completed !== undefined;
+}
+
+/**
+ * Mirrors the host's own subagent reader: only a completed, error-free turn
+ * counts. v1 threw on a failed probe; keeping that contract means a provider
+ * outage is logged by the brainstorm loop instead of recorded as a finding.
+ */
 function lastAssistantText(messages: readonly SessionMessage[]): string {
-  const reply = [...messages].reverse().find(isAssistant);
-  if (!reply) return "";
+  const completed = messages.filter(isAssistant).filter(isCompleted);
+  const reply = completed.at(-1);
+  if (!reply) throw new Error("Probe returned no completed reply");
+  if (reply.error) throw new Error(`Probe failed: ${reply.error.message}`);
   return reply.content
     .filter(isText)
     .map((part) => part.text)

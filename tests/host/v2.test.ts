@@ -83,6 +83,7 @@ function createHost() {
         { type: "user", text: "ignored" },
         {
           type: "assistant",
+          time: { created: 1, completed: 2 },
           content: [
             { type: "reasoning", text: "hmm" },
             { type: "text", text: '{"done": true,' },
@@ -269,12 +270,47 @@ describe("createSessionProbe", () => {
     expect(sessions.removed).toEqual(["ses_probe"]);
   });
 
-  it("returns an empty string when no assistant message came back", async () => {
-    const { host } = createHost();
+  it("throws when no completed assistant reply came back, so the failure is logged rather than recorded", async () => {
+    const { host, sessions } = createHost();
     const silent = { ...host.session, context: async () => [] };
 
-    const text = await createSessionProbe(silent as unknown as V2Host["session"]).run("probe", "ctx");
+    await expect(createSessionProbe(silent as unknown as V2Host["session"]).run("probe", "ctx")).rejects.toThrow(
+      "no completed reply",
+    );
+    expect(sessions.removed).toEqual(["ses_probe"]);
+  });
 
-    expect(text).toBe("");
+  it("throws with the provider's message when the model turn errored", async () => {
+    const { host } = createHost();
+    const errored = {
+      ...host.session,
+      context: async () => [
+        {
+          type: "assistant",
+          time: { created: 1, completed: 2 },
+          error: { type: "ProviderModelNotFoundError", message: "Model not found: openai/gpt-5.2-codex" },
+          content: [],
+        },
+      ],
+    };
+
+    await expect(createSessionProbe(errored as unknown as V2Host["session"]).run("probe", "ctx")).rejects.toThrow(
+      "Model not found: openai/gpt-5.2-codex",
+    );
+  });
+
+  it("skips an assistant message that is still streaming", async () => {
+    const { host } = createHost();
+    const streaming = {
+      ...host.session,
+      context: async () => [
+        { type: "assistant", time: { created: 1, completed: 2 }, content: [{ type: "text", text: "done one" }] },
+        { type: "assistant", time: { created: 3 }, content: [{ type: "text", text: "partial" }] },
+      ],
+    };
+
+    const text = await createSessionProbe(streaming as unknown as V2Host["session"]).run("probe", "ctx");
+
+    expect(text).toBe("done one");
   });
 });

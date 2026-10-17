@@ -1,5 +1,7 @@
 export type { SessionStore, SessionStoreOptions } from "./sessions";
 export { createSessionStore } from "./sessions";
+export type { Tracker } from "./tracker";
+export { createTracker } from "./tracker";
 export type {
   Answer,
   AskCodeAnswer,

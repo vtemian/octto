@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { joinTextParts, toV1Tool } from "../../src/host/v1";
+import { createClientProbe, joinTextParts, toV1Tool } from "../../src/host/v1";
 import type { OcttoTool } from "../../src/tools/types";
 
 describe("toV1Tool", () => {
@@ -36,5 +36,39 @@ describe("joinTextParts", () => {
 
   it("returns an empty string when there is no text", () => {
     expect(joinTextParts([{ type: "image" }])).toBe("");
+  });
+});
+
+describe("createClientProbe", () => {
+  function fakeClient(calls: { created: unknown[]; prompted: any[]; deleted: unknown[] }) {
+    return {
+      session: {
+        create: async (input: unknown) => {
+          calls.created.push(input);
+          return { data: { id: "ses_probe" } };
+        },
+        prompt: async (input: unknown) => {
+          calls.prompted.push(input);
+          return { data: { parts: [{ type: "text", text: '{"done": true, "finding": "f"}' }] } };
+        },
+        delete: async (input: unknown) => {
+          calls.deleted.push(input);
+          return {};
+        },
+      },
+    };
+  }
+
+  it("prompts the agent with every tool denied, returns its text and deletes the session", async () => {
+    const calls = { created: [], prompted: [] as any[], deleted: [] };
+
+    const text = await createClientProbe(fakeClient(calls) as any).run("probe", "ctx");
+
+    expect(text).toBe('{"done": true, "finding": "f"}');
+    expect(calls.prompted[0]).toEqual({
+      path: { id: "ses_probe" },
+      body: { agent: "probe", tools: { "*": false }, parts: [{ type: "text", text: "ctx" }] },
+    });
+    expect(calls.deleted).toEqual([{ path: { id: "ses_probe" } }]);
   });
 });

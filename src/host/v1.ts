@@ -10,6 +10,12 @@ type ResolvedAgents = Record<string, AgentConfig | undefined>;
 type Client = PluginInput["client"];
 
 /**
+ * An empty map adds no rules, leaving the probe every tool; a permission ask in
+ * its parentless session would then wait forever, since nobody can answer it.
+ */
+const DENY_ALL_TOOLS = { "*": false } as const;
+
+/**
  * Layers octto's agents onto whatever the host resolved so far.
  *
  * Merges per agent rather than replacing the entry, so keys other plugins set
@@ -50,7 +56,7 @@ export function createClientProbe(client: Client): ProbeRunner {
       try {
         const prompt = await client.session.prompt({
           path: { id: sessionId },
-          body: { agent, tools: {}, parts: [{ type: "text", text }] },
+          body: { agent, tools: DENY_ALL_TOOLS, parts: [{ type: "text", text }] },
         });
         if (!prompt.data) throw new Error("Failed to get probe response");
         return joinTextParts(prompt.data.parts);

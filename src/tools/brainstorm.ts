@@ -1,4 +1,4 @@
-import { tool } from "@opencode-ai/plugin/tool";
+import { z } from "zod";
 
 import { DEFAULT_ANSWER_TIMEOUT_MS } from "@/constants";
 import type { Answer, SessionStore } from "@/session";
@@ -6,23 +6,25 @@ import { QUESTION_TYPES, QUESTIONS, STATUSES } from "@/session";
 import { BRANCH_STATUSES, type BrainstormState, createStateStore, type StateStore } from "@/state";
 import { generateSessionId } from "@/utils";
 
+import { defineTool } from "./define";
 import { formatBranchStatus, formatFindings, formatFindingsList, formatQASummary } from "./formatters";
+import type { ProbeRunner } from "./probe";
 import { processAnswer } from "./processor";
-import type { OcttoTool, OcttoTools, OpencodeClient } from "./types";
+import type { OcttoTool, OcttoTools } from "./types";
 
 const MAX_ITERATIONS = 50;
 const REVIEW_TIMEOUT_MS = 600_000;
 
-const branchesSchema = tool.schema
+const branchesSchema = z
   .array(
-    tool.schema.object({
-      id: tool.schema.string(),
-      scope: tool.schema.string(),
-      initial_question: tool.schema.object({
-        type: tool.schema.enum(QUESTION_TYPES),
-        config: tool.schema.looseObject({
-          question: tool.schema.string().optional(),
-          context: tool.schema.string().optional(),
+    z.object({
+      id: z.string(),
+      scope: z.string(),
+      initial_question: z.object({
+        type: z.enum(QUESTION_TYPES),
+        config: z.looseObject({
+          question: z.string().optional(),
+          context: z.string().optional(),
         }),
       }),
     }),
@@ -52,7 +54,7 @@ function enqueueAnswerProcessing(
   browserSessionId: string,
   questionId: string,
   response: Answer,
-  client: OpencodeClient,
+  probe: ProbeRunner,
   pendingProcessing: Promise<void>[],
 ): void {
   const processing = processAnswer(
@@ -62,7 +64,7 @@ function enqueueAnswerProcessing(
     browserSessionId,
     questionId,
     response,
-    client,
+    probe,
   ).catch((error: unknown) => {
     console.error(`[octto] Error processing answer ${questionId}:`, error);
   });
@@ -94,7 +96,7 @@ async function processOneAnswer(
   sessions: SessionStore,
   sessionId: string,
   browserSessionId: string,
-  client: OpencodeClient,
+  probe: ProbeRunner,
 ): Promise<"continue" | "break" | "stalled"> {
   if (!answer.completed) {
     if (answer.status === STATUSES.NONE_PENDING) {
@@ -114,7 +116,7 @@ async function processOneAnswer(
       browserSessionId,
       answer.question_id,
       answer.response,
-      client,
+      probe,
       pending,
     );
   }
@@ -126,7 +128,7 @@ async function collectAnswers(
   sessions: SessionStore,
   sessionId: string,
   browserSessionId: string,
-  client: OpencodeClient,
+  probe: ProbeRunner,
 ): Promise<CollectionResult> {
   const pending: Promise<void>[] = [];
   let stoppedBecause: CollectionStop = COLLECTION_STOPS.ITERATION_CAP;
@@ -143,7 +145,7 @@ async function collectAnswers(
       timeout: DEFAULT_ANSWER_TIMEOUT_MS,
     });
 
-    const action = await processOneAnswer(answer, pending, stateStore, sessions, sessionId, browserSessionId, client);
+    const action = await processOneAnswer(answer, pending, stateStore, sessions, sessionId, browserSessionId, probe);
     if (action === "break") {
       stoppedBecause = COLLECTION_STOPS.NO_ANSWER_WITHIN_TIMEOUT;
       break;
@@ -311,10 +313,10 @@ async function registerBranchQuestions(
 }
 
 function buildCreateBrainstormTool(store: StateStore, sessions: SessionStore): OcttoTool {
-  return tool({
+  return defineTool({
     description: "Create a new brainstorm session with exploration branches",
     args: {
-      request: tool.schema.string().describe("The original user request"),
+      request: z.string().describe("The original user request"),
       branches: branchesSchema,
     },
     execute: async (args) => {
@@ -341,10 +343,10 @@ ${branchesXml}
 }
 
 function buildGetSessionSummaryTool(store: StateStore): OcttoTool {
-  return tool({
+  return defineTool({
     description: "Get summary of all branches and their findings",
     args: {
-      session_id: tool.schema.string().describe("Brainstorm session ID"),
+      session_id: z.string().describe("Brainstorm session ID"),
     },
     execute: async (args) => {
       const state = await store.getSession(args.session_id);
@@ -365,10 +367,10 @@ ${branches}
 }
 
 function buildEndBrainstormTool(store: StateStore, sessions: SessionStore): OcttoTool {
-  return tool({
+  return defineTool({
     description: "End a brainstorm session and get final summary",
     args: {
-      session_id: tool.schema.string().describe("Brainstorm session ID"),
+      session_id: z.string().describe("Brainstorm session ID"),
     },
     execute: async (args) => {
       const state = await store.getSession(args.session_id);
@@ -390,18 +392,14 @@ function buildEndBrainstormTool(store: StateStore, sessions: SessionStore): Octt
   });
 }
 
-function buildAwaitBrainstormCompleteTool(
-  store: StateStore,
-  sessions: SessionStore,
-  client: OpencodeClient,
-): OcttoTool {
-  return tool({
+function buildAwaitBrainstormCompleteTool(store: StateStore, sessions: SessionStore, probe: ProbeRunner): OcttoTool {
+  return defineTool({
     description: `Wait for brainstorm session to complete. Processes answers asynchronously as they arrive.
 Returns when all branches are done with their findings.
 This is the recommended way to run a brainstorm - just create_brainstorm then await_brainstorm_complete.`,
     args: {
-      session_id: tool.schema.string().describe("Brainstorm session ID (state session)"),
-      browser_session_id: tool.schema.string().describe("Browser session ID (for collecting answers)"),
+      session_id: z.string().describe("Brainstorm session ID (state session)"),
+      browser_session_id: z.string().describe("Browser session ID (for collecting answers)"),
     },
     execute: async (args) => {
       const { state, allComplete, stoppedBecause } = await collectAnswers(
@@ -409,7 +407,7 @@ This is the recommended way to run a brainstorm - just create_brainstorm then aw
         sessions,
         args.session_id,
         args.browser_session_id,
-        client,
+        probe,
       );
 
       if (!state) return "<error>Session lost</error>";
@@ -433,13 +431,13 @@ This is the recommended way to run a brainstorm - just create_brainstorm then aw
   });
 }
 
-export function createBrainstormTools(sessions: SessionStore, client: OpencodeClient, baseDir?: string): OcttoTools {
+export function createBrainstormTools(sessions: SessionStore, probe: ProbeRunner, baseDir?: string): OcttoTools {
   const store = createStateStore(baseDir);
 
   return {
     create_brainstorm: buildCreateBrainstormTool(store, sessions),
     get_session_summary: buildGetSessionSummaryTool(store),
     end_brainstorm: buildEndBrainstormTool(store, sessions),
-    await_brainstorm_complete: buildAwaitBrainstormCompleteTool(store, sessions, client),
+    await_brainstorm_complete: buildAwaitBrainstormCompleteTool(store, sessions, probe),
   };
 }

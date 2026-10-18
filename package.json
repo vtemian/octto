@@ -1,12 +1,13 @@
 {
   "name": "octto",
-  "version": "0.4.5",
+  "version": "0.5.0",
   "description": "OpenCode plugin that turns rough ideas into designs through branch-based exploration",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
   "files": [
-    "dist"
+    "dist",
+    "index.js"
   ],
   "exports": {
     ".": {
@@ -16,7 +17,7 @@
   },
   "scripts": {
     "prepare": "lefthook install",
-    "build": "bun build src/index.ts --outdir dist --target bun --format esm && tsc --emitDeclarationOnly",
+    "build": "bun build src/index.ts --outdir dist --target bun --format esm --external @opencode/plugin && tsc --emitDeclarationOnly",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "bun run clean && bun run check && bun run build",
@@ -27,7 +28,8 @@
     "lint:biome": "biome lint .",
     "lint:eslint": "eslint .",
     "check": "biome check . && eslint . && bun run typecheck && bun test tests",
-    "test:e2e": "docker build -f e2e/Dockerfile -t octto-e2e . && docker run --rm octto-e2e"
+    "test:e2e": "docker build -f e2e/Dockerfile -t octto-e2e . && docker run --rm octto-e2e",
+    "test:e2e:v2": "docker build -f e2e/Dockerfile.v2 -t octto-e2e-v2 . && docker run --rm octto-e2e-v2"
   },
   "keywords": [
     "opencode",
@@ -48,9 +50,13 @@
     "valibot": "^1.2.0",
     "zod": "^4.3.5"
   },
+  "overrides": {
+    "zod": "^4.3.5"
+  },
   "devDependencies": {
     "@biomejs/biome": "^2.3.10",
     "@eslint/js": "^10.0.1",
+    "@opencode/plugin": "2.0.31",
     "bun-types": "latest",
     "eslint": "^10.0.3",
     "eslint-plugin-sonarjs": "^4.0.2",

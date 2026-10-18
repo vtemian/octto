@@ -8,6 +8,7 @@
  */
 
 const DEFAULT_PORT = 8787;
+const PROBE_MARKER = "Evaluate the branch";
 const SSE_HEADERS = {
   "Content-Type": "text/event-stream",
   "Cache-Control": "no-cache",
@@ -85,6 +86,18 @@ async function loadScript(path: string): Promise<readonly ScriptTurn[]> {
   const turns: unknown[] = parsed;
   if (!turns.every(isScriptTurn)) throw new Error(`Script ${path} turns must be {tool,args} or {text}`);
   return turns;
+}
+
+/**
+ * octto's probe agent runs on its own session, so turn counting cannot tell it
+ * apart from the main conversation. STUB_PROBE_REPLY, when set, answers any
+ * request that carries the probe prompt and leaves the script to the main agent.
+ */
+function probeReplyFor(request: ChatRequest): TextTurn | undefined {
+  const reply = process.env.STUB_PROBE_REPLY;
+  if (!reply) return undefined;
+  const mentionsProbe = JSON.stringify(request.messages ?? []).includes(PROBE_MARKER);
+  return mentionsProbe ? { text: reply } : undefined;
 }
 
 function assistantTurnsSoFar(request: ChatRequest): number {
@@ -176,7 +189,7 @@ export function createStubProvider(scriptPath: string, port: number): ReturnType
 
       const script = await loadScript(scriptPath);
       const index = assistantTurnsSoFar(body);
-      const turn = script[index] ?? EXHAUSTED;
+      const turn = probeReplyFor(body) ?? script[index] ?? EXHAUSTED;
       const model = body.model ?? "stub-model";
       const args = isToolTurn(turn) ? resolveArgs(turn.args, body.messages ?? []) : {};
 

@@ -29,3 +29,6 @@ yarn.lock
 # opencode local state
 .opencode/plans/
 
+
+# Agent worktrees (Biome honours this via vcs.useIgnoreFile)
+.claude/worktrees/

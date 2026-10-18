@@ -55,6 +55,30 @@ describe("loadCustomConfig", () => {
     expect(result.port).toBe(3000);
   });
 
+  it("reports no model overrides when the user set none", async () => {
+    writeFileSync(join(configDir, "octto.json"), JSON.stringify({ agents: { octto: { temperature: 0.5 } } }));
+
+    const result = await loadCustomConfig(stubAgents, configDir);
+
+    expect([...result.modelOverrides]).toEqual([]);
+  });
+
+  it("reports only the agents whose model the user set", async () => {
+    writeFileSync(join(configDir, "octto.json"), JSON.stringify({ agents: { probe: { model: "a/b" } } }));
+
+    const result = await loadCustomConfig(stubAgents, configDir);
+
+    expect([...result.modelOverrides]).toEqual(["probe"]);
+  });
+
+  it("reports every agent as overridden by a top-level model", async () => {
+    writeFileSync(join(configDir, "octto.json"), JSON.stringify({ model: "a/b" }));
+
+    const result = await loadCustomConfig(stubAgents, configDir);
+
+    expect([...result.modelOverrides].sort()).toEqual(["bootstrapper", "octto", "probe"]);
+  });
+
   it("should handle invalid JSON gracefully and return defaults", async () => {
     writeFileSync(join(configDir, "octto.json"), "{ not valid json }");
 

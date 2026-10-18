@@ -1,18 +1,19 @@
-import type { ToolContext, ToolResult } from "@opencode-ai/plugin/tool";
-import type { createOpencodeClient } from "@opencode-ai/sdk";
+import type { z } from "zod";
 
-// Using `any` to avoid exposing zod types in declaration files.
-// The actual tools are typesafe via zod schemas.
-/* eslint-disable @typescript-eslint/no-explicit-any */
-export interface OcttoTool {
-  description: string;
-  // biome-ignore lint/suspicious/noExplicitAny: zod schema type not exposed in declaration files
-  args: any;
-  // biome-ignore lint/suspicious/noExplicitAny: zod schema type not exposed in declaration files
-  execute: (args: any, context: ToolContext) => Promise<ToolResult>;
+/** The subset of the host tool context octto reads. Both hosts expose the conversation id. */
+export interface ToolCall {
+  readonly sessionID?: string;
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
+
+/**
+ * A host-agnostic tool. `execute` is a method signature on purpose: method
+ * bivariance lets defineTool() hand back a tool whose typed execute narrows
+ * `args` without a type assertion.
+ */
+export interface OcttoTool {
+  readonly description: string;
+  readonly args: z.ZodRawShape;
+  execute(args: unknown, call: ToolCall): Promise<string>;
+}
 
 export type OcttoTools = Record<string, OcttoTool>;
-
-export type OpencodeClient = ReturnType<typeof createOpencodeClient>;

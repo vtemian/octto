@@ -16,7 +16,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { type CdpSession, connect, waitForTarget, waitInPage } from "./cdp";
+import { type CdpSession, connect, targetIds, waitForTarget, waitInPage } from "./cdp";
 import {
   cdpPort,
   octtoPort,
@@ -57,10 +57,12 @@ describe("issue #58: session end must not hang nor leave a zombie page", () => {
   });
 
   it("stays on Session Ended and the agent run completes", async () => {
+    // Tabs earlier specs left open under the same port must not be mistaken for ours.
+    const before = await targetIds(cdpPort());
     run = spawnOpencode(home, "build", "Ask the user which cache backend we should use, then wrap up.");
 
     // Reaching this tab proves octto's openBrowser() path worked.
-    const target = await waitForTarget(cdpPort(), `http://localhost:${octtoPort()}`, TAB_TIMEOUT_MS);
+    const target = await waitForTarget(cdpPort(), `http://localhost:${octtoPort()}`, TAB_TIMEOUT_MS, before);
     page = await connect(target.webSocketDebuggerUrl ?? "");
 
     await waitInPage(

@@ -20,7 +20,15 @@ When you describe your idea, octto opens an interactive UI:
 
 ## Quick Start
 
-Add to `~/.config/opencode/opencode.json`:
+Add octto to your OpenCode config.
+
+OpenCode 2 (`~/.config/opencode/opencode.jsonc`):
+
+```json
+{ "plugins": ["octto"] }
+```
+
+OpenCode 1, 1.18.29 or newer (`~/.config/opencode/opencode.json`):
 
 ```json
 { "plugin": ["octto"] }

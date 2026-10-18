@@ -25,6 +25,21 @@ jobs:
       - name: Run scripted tier
         run: docker run --rm octto-e2e
 
+  scripted-v2:
+    # Same stub model, real OpenCode 2 host. Browser-less: answers go over
+    # octto's websocket, so this tier also runs where chromium does not.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build harness
+        run: docker build -f e2e/Dockerfile.v2 -t octto-e2e-v2 .
+
+      - name: Run OpenCode 2 tier
+        run: docker run --rm octto-e2e-v2
+
   live:
     # Costs money and needs a real model, so it is manual only and skips
     # without a key rather than failing.

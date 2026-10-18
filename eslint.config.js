@@ -7,6 +7,7 @@ export default [
   {
     ignores: [
       "dist/**",
+      "index.js",
       "coverage/**",
       "node_modules/**",
       "examples/**",

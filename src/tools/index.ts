@@ -11,12 +11,12 @@ import type { OcttoTools } from "./types";
 export type { ProbeRunner } from "./probe";
 export type { OcttoTool, OcttoTools, ToolCall } from "./types";
 
-export function createOcttoTools(sessions: SessionStore, probe: ProbeRunner): OcttoTools {
+export function createOcttoTools(sessions: SessionStore, probe: ProbeRunner, stateDir?: string): OcttoTools {
   return {
     ...createSessionTools(sessions),
     ...createQuestionTools(sessions),
     ...createResponseTools(sessions),
     ...createPushQuestionTool(sessions),
-    ...createBrainstormTools(sessions, probe),
+    ...createBrainstormTools(sessions, probe, stateDir),
   };
 }

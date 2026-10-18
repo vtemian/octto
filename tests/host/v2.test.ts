@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -29,7 +29,7 @@ function blankAgent(id: string): Record<string, any> {
   };
 }
 
-function createHost() {
+function createHost(directory = "/tmp/octto-v2-test") {
   const tools = new Map<string, FakeTool>();
   const agents = new Map<string, Record<string, any>>();
   const events: any[] = [];
@@ -37,7 +37,7 @@ function createHost() {
   const sessions = { created: [] as any[], prompted: [] as any[], waited: [] as string[], removed: [] as string[] };
 
   const host = {
-    location: { directory: "/tmp/octto-v2-test" },
+    location: { directory },
     tool: {
       transform: async (edit: (editor: any) => void) => {
         edit({ add: (tool: FakeTool) => tools.set(tool.name, tool) });
@@ -104,6 +104,43 @@ function createHost() {
   return { host: host as unknown as V2Host, tools, agents, sessions, emit: (event: any) => push?.(event) };
 }
 
+/**
+ * Drives one real probe: starts a one-branch brainstorm, answers its question
+ * and the plan review over the browser socket, and waits for the round to end.
+ */
+async function runOneProbe(tools: Map<string, FakeTool>): Promise<void> {
+  const created = String(
+    (
+      await tools.get("create_brainstorm")!.execute(
+        {
+          request: "r",
+          branches: [{ id: "b1", scope: "s", initial_question: { type: "confirm", config: { question: "Go?" } } }],
+        },
+        { sessionID: "host_probe" },
+      )
+    ).content,
+  );
+  const tag = (name: string) => created.match(new RegExp(`<${name}>([^<]+)</${name}>`))![1];
+  const url = new URL(tag("url"));
+  const ws = new WebSocket(`ws://${url.host}/ws?token=${url.searchParams.get("token")}`);
+  ws.onmessage = (event) => {
+    const message = JSON.parse(String(event.data));
+    if (message.type !== "question") return;
+    const answer = message.questionType === "show_plan" ? { decision: "approve" } : { choice: "yes" };
+    ws.send(JSON.stringify({ type: "response", id: message.id, answer }));
+  };
+  try {
+    await tools
+      .get("await_brainstorm_complete")!
+      .execute(
+        { session_id: tag("session_id"), browser_session_id: tag("browser_session") },
+        { sessionID: "host_probe" },
+      );
+  } finally {
+    ws.close();
+  }
+}
+
 async function waitUntil(condition: () => Promise<boolean>, timeoutMs = 2000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -157,8 +194,30 @@ describe("v2 setup", () => {
     const octto = agents.get("octto")!;
     expect(octto.mode).toBe("primary");
     expect(octto.system).toContain("brainstorming");
-    expect(octto.model).toEqual({ providerID: "openai", id: "gpt-5.3-codex" });
     expect(octto.request.body.temperature).toBe(0.7);
+  });
+
+  it("leaves the built-in model unpinned, so a host that lacks it falls back to its own default", async () => {
+    const { host, agents, tools, sessions } = createHost(configDir);
+    cleanup = await setup(host, configDir);
+
+    expect(agents.get("octto")!.model).toBeUndefined();
+    await runOneProbe(tools);
+    expect(sessions.created.at(-1).model).toBeUndefined();
+    // State follows the project, not the host's cwd ($HOME under v2's service).
+    expect(readdirSync(join(configDir, ".octto")).some((file) => file.startsWith("ses_"))).toBe(true);
+  });
+
+  it("pins a model the user chose in octto.json on the agent and on its probe sessions", async () => {
+    writeOcttoConfig({ agents: { probe: { model: "cap2/probe-model", variant: "high" } } });
+    const { host, agents, tools, sessions } = createHost(configDir);
+    cleanup = await setup(host, configDir);
+
+    const pinned = { providerID: "cap2", id: "probe-model", variant: "high" };
+    expect(agents.get("probe")!.model).toEqual(pinned);
+    expect(agents.get("octto")!.model).toBeUndefined();
+    await runOneProbe(tools);
+    expect(sessions.created.at(-1).model).toEqual(pinned);
   });
 
   it("still loads when octto.json names a model without a provider, falling back to the host default", async () => {
@@ -342,7 +401,26 @@ describe("createSessionProbe", () => {
 
     await expect(
       createSessionProbe(errored as unknown as V2Host["session"], new Map()).run("probe", "ctx"),
-    ).rejects.toThrow("Model not found: openai/gpt-5.3-codex");
+    ).rejects.toThrow(/^Model not found: openai\/gpt-5\.3-codex$/);
+  });
+
+  it("throws the idle marker's error when the turn failed before any assistant reply", async () => {
+    const { host } = createHost();
+    const unroutable = {
+      ...host.session,
+      context: async () => [
+        { type: "user", text: "ctx" },
+        {
+          type: "idle",
+          outcome: "failed",
+          error: { type: "provider.no-route", message: "Model unavailable: openai/gpt-5.3-codex" },
+        },
+      ],
+    };
+
+    await expect(
+      createSessionProbe(unroutable as unknown as V2Host["session"], new Map()).run("probe", "ctx"),
+    ).rejects.toThrow(/^Model unavailable: openai\/gpt-5\.3-codex$/);
   });
 
   it("skips an assistant message that is still streaming", async () => {

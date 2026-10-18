@@ -1,7 +1,10 @@
+import { join } from "node:path";
+
 import type { AgentConfig } from "@opencode-ai/sdk";
 
 import { AGENTS, type AgentName, agents } from "@/agents";
 import { loadCustomConfig } from "@/config";
+import { STATE_DIR } from "@/constants";
 import { createFragmentInjector, getAgentSystemPromptPrefix, warnUnknownAgents } from "@/hooks";
 import { createSessionStore, createTracker } from "@/session";
 import { createOcttoTools, type OcttoTools, type ProbeRunner } from "@/tools";
@@ -18,6 +21,8 @@ export interface Octto {
   readonly tools: OcttoTools;
   /** Agents in v1 AgentConfig shape; the v2 adapter maps them. */
   readonly agents: Record<AgentName, AgentConfig>;
+  /** Agents whose model the user chose; the rest carry octto's built-in default. */
+  readonly modelOverrides: ReadonlySet<AgentName>;
   /** The host conversation was deleted: end every octto session it owns. */
   onSessionDeleted(hostSessionId: string): Promise<void>;
   dispose(): Promise<void>;
@@ -41,7 +46,8 @@ export async function createOctto({ directory, probe, configDir }: OcttoOptions)
   const tracker = createTracker(async (sessionId) => {
     await sessions.endSession(sessionId);
   });
-  const tools = createOcttoTools(sessions, probe);
+  // The host's cwd is not the project: v2's background service runs from $HOME.
+  const tools = createOcttoTools(sessions, probe, join(directory, STATE_DIR));
 
   // Brainstorm browser sessions are created inside create_brainstorm, not via
   // start_session: without tracking it too, deleting the host session
@@ -53,6 +59,7 @@ export async function createOctto({ directory, probe, configDir }: OcttoOptions)
   return {
     tools,
     agents: customConfig.agents,
+    modelOverrides: customConfig.modelOverrides,
     onSessionDeleted: (hostSessionId) => tracker.release(hostSessionId),
     dispose: () => sessions.cleanup(),
   };

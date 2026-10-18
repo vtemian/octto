@@ -4,7 +4,7 @@ import type { Info as ToolInfo } from "@opencode/plugin/promise/tool";
 import type { AgentConfig } from "@opencode-ai/sdk";
 import { z } from "zod";
 
-import { AGENTS, type AgentName } from "@/agents";
+import { AGENTS, type AgentName, isAgentName } from "@/agents";
 import { createOctto, type Octto } from "@/octto";
 import type { OcttoTool, ProbeRunner } from "@/tools";
 
@@ -19,10 +19,12 @@ type V2Tool = ToolInfo<z.ZodObject<z.ZodRawShape>, undefined>;
 type SessionMessage = Awaited<ReturnType<V2Host["session"]["context"]>>[number];
 type AssistantReply = Extract<SessionMessage, { type: "assistant" }>;
 type ReplyPart = AssistantReply["content"][number];
+type IdleMarker = Extract<SessionMessage, { type: "idle" }>;
 
 const SESSION_DELETED = "session.deleted";
 const PROBE_TITLE_PREFIX = "probe-";
-/** The probe only reads user answers and emits JSON; v1 ran it with `tools: {}`. */
+const FAILED_OUTCOME = "failed";
+/** The probe only reads user answers and emits JSON. */
 const DENY_ALL_TOOLS = [{ action: "*", resource: "*", effect: "deny" }] as const;
 const deletedSessionSchema = z.object({ data: z.object({ sessionID: z.string() }) });
 
@@ -130,10 +132,15 @@ function lockDownProbe(agent: AgentRecord): void {
   agent.permissions = [...DENY_ALL_TOOLS];
 }
 
+/**
+ * Only a model the user chose is pinned. v1 keeps octto's built-in default, but
+ * a v2 host may lack it, and pinning it there fails every probe and subagent run
+ * that the host default would have answered.
+ */
 async function prepareAgents(octto: Octto, models: Map<string, ModelRef>): Promise<ReadonlyMap<string, Apply>> {
   const prepared = new Map<string, Apply>();
   for (const [name, config] of Object.entries(octto.agents)) {
-    const model = await resolveModel(config);
+    const model = isAgentName(name) && octto.modelOverrides.has(name) ? await resolveModel(config) : undefined;
     if (model !== undefined) models.set(name, model);
     prepared.set(name, (agent) => {
       applyConfig(agent, config, model);
@@ -166,16 +173,22 @@ function isCompleted(reply: AssistantReply): boolean {
   return reply.time.completed !== undefined;
 }
 
+function isIdle(message: SessionMessage): message is IdleMarker {
+  return message.type === "idle";
+}
+
 /**
  * Mirrors the host's own subagent reader: only a completed, error-free turn
  * counts. Throwing lets the processor close the branch with the provider's
- * reason instead of parsing an empty reply.
+ * reason instead of parsing an empty reply. A turn that fails before any
+ * assistant message (an unroutable model) reports only on its idle marker.
  */
 function lastAssistantText(messages: readonly SessionMessage[]): string {
-  const completed = messages.filter(isAssistant).filter(isCompleted);
-  const reply = completed.at(-1);
+  const idle = messages.filter(isIdle).at(-1);
+  if (idle?.outcome === FAILED_OUTCOME) throw new Error(idle.error?.message ?? "Probe turn failed");
+  const reply = messages.filter(isAssistant).filter(isCompleted).at(-1);
   if (!reply) throw new Error("Probe returned no completed reply");
-  if (reply.error) throw new Error(`Probe failed: ${reply.error.message}`);
+  if (reply.error) throw new Error(reply.error.message);
   return reply.content
     .filter(isText)
     .map((part) => part.text)

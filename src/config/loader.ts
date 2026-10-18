@@ -13,6 +13,8 @@ export type { AgentOverride, Fragments, OcttoConfig } from "./schema";
 
 export interface CustomConfig {
   agents: Record<AgentName, AgentConfig>;
+  /** Agents whose model the user set in octto.json, rather than the built-in default. */
+  modelOverrides: ReadonlySet<AgentName>;
   port: number;
   fragments: Fragments;
 }
@@ -165,7 +167,17 @@ export async function loadCustomConfig(
 
   return {
     agents: mergedAgents,
+    modelOverrides: collectModelOverrides(config),
     port: resolvePort(config?.port),
     fragments: config?.fragments,
   };
+}
+
+function collectModelOverrides(config: OcttoConfig | null): ReadonlySet<AgentName> {
+  if (config?.model) return new Set(VALID_AGENT_NAMES);
+  const overridden = Object.entries(config?.agents ?? {})
+    .filter(([, override]) => override?.model !== undefined)
+    .map(([name]) => name)
+    .filter(isAgentName);
+  return new Set(overridden);
 }

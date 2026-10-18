@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import * as v from "valibot";
 
+import { STATE_DIR } from "@/constants";
 import type { Answer, BaseConfig, QuestionType } from "@/session";
 import { QUESTION_TYPES } from "@/session";
 
@@ -83,7 +84,7 @@ function parseBrainstormState(content: string, sessionId: string): BrainstormSta
   return parseResult.output;
 }
 
-export function createStatePersistence(baseDir = ".octto"): StatePersistence {
+export function createStatePersistence(baseDir = STATE_DIR): StatePersistence {
   return {
     async save(state: BrainstormState): Promise<void> {
       ensureDir(baseDir);

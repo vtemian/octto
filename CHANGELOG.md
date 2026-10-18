@@ -14,10 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Under OpenCode 2, octto tools are registered with `codemode: false`. Without it the host lists plugin tools only inside Code Mode's `execute`, and a model calling `create_brainstorm` by name got "No tool named create_brainstorm is currently available".
-- A probe that fails (an errored or incomplete model turn, an unreachable provider) closes its branch with "Probe failed: <reason>" as the finding. Before, the throw left the branch exploring with nothing pending, and `await_brainstorm_complete` stalled before plan review.
-- Under OpenCode 2, probe sessions run on the probe agent's configured model. v2 takes a session's model only from `session.create`, so they ran on the host default.
+- A probe that fails (an errored or incomplete model turn, an unroutable model, an unreachable provider) closes its branch with "Probe failed: <reason>" as the finding, with the provider's reason read from the turn's idle marker when no reply exists. Before, the throw left the branch exploring with nothing pending, and `await_brainstorm_complete` stalled before plan review.
+- Under OpenCode 2, a model set in `octto.json` is pinned on the agent and on its probe sessions (v2 takes a session's model only from `session.create`). The built-in default model is not pinned on v2, so a host without it uses its own default instead of failing every probe.
 - Under OpenCode 2, an `octto.json` model without a `provider/` prefix (or with an empty `#variant`) is ignored with a warning and the host default is used. Before, setup rejected and the host dropped octto entirely.
 - The octto agent bootstraps through the host's real subagent tool (`subagent` on v2, `task` on v1) instead of `background_task`, which neither host has.
+- Under OpenCode 1, the probe runs with every tool denied (`tools: {"*": false}`). The empty map it sent added no rules, so a probe tool call could hit a permission prompt in a session nobody sees and hang `await_brainstorm_complete`.
+- Brainstorm state is written to `<project>/.octto` instead of `.octto` under the host's working directory, which under OpenCode 2's background service is `$HOME`.
 
 ### Changed
 - Default agent model moved from `openai/gpt-5.2-codex`, which both hosts dropped from their catalogues, to `openai/gpt-5.3-codex`. Override it in `octto.json` as before.

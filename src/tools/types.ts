@@ -1,8 +1,10 @@
 import type { z } from "zod";
 
-/** The subset of the host tool context octto reads. Both hosts expose the conversation id. */
+/** The subset of the host tool context octto reads. Both hosts expose these. */
 export interface ToolCall {
   readonly sessionID?: string;
+  /** Fires when the user interrupts the call, so a blocking wait can stop taking answers. */
+  readonly signal?: AbortSignal;
 }
 
 /**

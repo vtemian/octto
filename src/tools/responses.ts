@@ -16,11 +16,12 @@ NOTE: Prefer get_next_answer for better flow - it returns whichever question use
       block: z.boolean().optional().describe("Wait for response (default: false)"),
       timeout: z.number().optional().describe("Max milliseconds to wait if blocking (default: 300000 = 5 min)"),
     },
-    execute: async (args) => {
+    execute: async (args, call) => {
       const answer = await sessions.getAnswer({
         question_id: args.question_id,
         block: args.block,
         timeout: args.timeout,
+        signal: call.signal,
       });
 
       if (answer.completed) {
@@ -54,11 +55,12 @@ Push multiple questions, then call this repeatedly to get answers as they come.`
       block: z.boolean().optional().describe("Wait for response (default: false)"),
       timeout: z.number().optional().describe("Max milliseconds to wait if blocking (default: 300000 = 5 min)"),
     },
-    execute: async (args) => {
+    execute: async (args, call) => {
       const nextAnswer = await sessions.getNextAnswer({
         session_id: args.session_id,
         block: args.block,
         timeout: args.timeout,
+        signal: call.signal,
       });
 
       if (nextAnswer.completed) {

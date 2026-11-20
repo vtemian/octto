@@ -1,4 +1,6 @@
+import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { rename } from "node:fs/promises";
 import { join } from "node:path";
 
 import * as v from "valibot";
@@ -57,6 +59,8 @@ export interface StatePersistence {
   list: () => Promise<string[]>;
 }
 
+const STAGING_SUFFIX = ".tmp";
+
 function validateSessionId(sessionId: string): void {
   if (!/^[a-zA-Z0-9_-]+$/.test(sessionId)) {
     throw new Error(`Invalid session ID: ${sessionId}`);
@@ -90,7 +94,11 @@ export function createStatePersistence(baseDir = STATE_DIR): StatePersistence {
       ensureDir(baseDir);
       const filePath = getFilePath(baseDir, state.session_id);
       state.updated_at = Date.now();
-      await Bun.write(filePath, JSON.stringify(state, null, 2));
+      // Reads are not locked, and Bun.write truncates before writing: a load
+      // landing in between parses an empty file. rename swaps it in atomically.
+      const staging = `${filePath}.${randomUUID()}${STAGING_SUFFIX}`;
+      await Bun.write(staging, JSON.stringify(state, null, 2));
+      await rename(staging, filePath);
     },
 
     async load(sessionId: string): Promise<BrainstormState | null> {

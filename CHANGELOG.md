@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The octto agent bootstraps through the host's real subagent tool (`subagent` on v2, `task` on v1) instead of `background_task`, which neither host has.
 - Under OpenCode 1, the probe runs with every tool denied (`tools: {"*": false}`). The empty map it sent added no rules, so a probe tool call could hit a permission prompt in a session nobody sees and hang `await_brainstorm_complete`.
 - Brainstorm state is written to `<project>/.octto` instead of `.octto` under the host's working directory, which under OpenCode 2's background service is `$HOME`.
+- Brainstorm state is saved atomically (staging file, then rename). A concurrent read could catch the file truncated mid-write, fail to parse, and drop that answer's probe, which stalled the brainstorm.
+- An interrupted `await_brainstorm_complete`, `get_next_answer` or `get_answer` withdraws its wait. Before, the orphaned call stayed first in line and took the next answer from the retry; an interrupted plan review is now cancelled too, so the retry's review is the only one open.
+- Under OpenCode 1, a probe turn that errored (HTTP 200 with the error on `info`) closes its branch with the provider's message instead of "Could not parse probe response".
+- Under OpenCode 2, a temperature set in `octto.json` is sent through the session context hook; v2 never read the agent request body octto wrote it to. Built-in temperatures are not sent on v2, since the hook skips the host's capability check and reasoning models reject the parameter.
+- Under OpenCode 2, the probe agent is registered as hidden and primary, which keeps it out of the host's subagent tool. Agent permissions are last-match-wins with user rules appended after octto's, so a user allow rule could re-enable tools for a probe reached that way.
+- The published type declarations no longer import `@opencode/plugin`, a dev dependency that consumers do not have.
 
 ### Changed
 - Default agent model moved from `openai/gpt-5.2-codex`, which both hosts dropped from their catalogues, to `openai/gpt-5.3-codex`. Override it in `octto.json` as before.

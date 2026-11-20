@@ -10,15 +10,24 @@ import { server, setup } from "@/host";
  * complete on its own. Never add a `tui` key here: v1 rejects modules that
  * define both `server` and `tui`.
  */
-interface OcttoModule extends PluginV2.Plugin {
+interface OcttoModule {
+  readonly id: string;
+  /**
+   * Typed without v2 types on purpose: `@opencode/plugin` is a dev dependency,
+   * so the published declarations must not import it. `definition` below
+   * checks the real v2 contract at build time.
+   */
+  readonly setup: (context: never) => Promise<unknown>;
   readonly server: PluginV1;
 }
 
-const Octto: OcttoModule = {
+const definition = {
   id: "octto",
   setup,
   server,
-};
+} satisfies PluginV2.Plugin & Pick<OcttoModule, "server">;
+
+const Octto: OcttoModule = definition;
 
 export default Octto;
 

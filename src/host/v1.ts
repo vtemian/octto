@@ -1,6 +1,7 @@
 import type { Hooks, Plugin, PluginInput } from "@opencode-ai/plugin";
 import { type ToolDefinition, tool } from "@opencode-ai/plugin/tool";
 import type { AgentConfig } from "@opencode-ai/sdk";
+import { z } from "zod";
 
 import type { AgentName } from "@/agents";
 import { createOctto } from "@/octto";
@@ -14,6 +15,12 @@ type Client = PluginInput["client"];
  * its parentless session would then wait forever, since nobody can answer it.
  */
 const DENY_ALL_TOOLS = { "*": false } as const;
+
+/** Every v1 assistant error carries a name; most also carry `data.message`. */
+const turnErrorSchema = z.object({
+  name: z.string(),
+  data: z.object({ message: z.string().optional() }).optional(),
+});
 
 /**
  * Layers octto's agents onto whatever the host resolved so far.
@@ -42,7 +49,7 @@ export function toV1Tool(core: OcttoTool): ToolDefinition {
   return tool({
     description: core.description,
     args: core.args,
-    execute: (args, context) => core.execute(args, { sessionID: context.sessionID }),
+    execute: (args, context) => core.execute(args, { sessionID: context.sessionID, signal: context.abort }),
   });
 }
 
@@ -59,6 +66,9 @@ export function createClientProbe(client: Client): ProbeRunner {
           body: { agent, tools: DENY_ALL_TOOLS, parts: [{ type: "text", text }] },
         });
         if (!prompt.data) throw new Error("Failed to get probe response");
+        // v1 answers an errored turn with 200, the error on info and no parts.
+        const failure = turnErrorSchema.safeParse(prompt.data.info.error);
+        if (failure.success) throw new Error(failure.data.data?.message ?? failure.data.name);
         return joinTextParts(prompt.data.parts);
       } finally {
         await client.session.delete({ path: { id: sessionId } }).catch((_error: unknown) => {

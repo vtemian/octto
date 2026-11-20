@@ -79,6 +79,17 @@ describe("loadCustomConfig", () => {
     expect([...result.modelOverrides].sort()).toEqual(["bootstrapper", "octto", "probe"]);
   });
 
+  it("reports only the agents whose temperature the user set", async () => {
+    writeFileSync(
+      join(configDir, "octto.json"),
+      JSON.stringify({ model: "a/b", agents: { octto: { temperature: 0.3 } } }),
+    );
+
+    const result = await loadCustomConfig(stubAgents, configDir);
+
+    expect([...result.temperatureOverrides]).toEqual(["octto"]);
+  });
+
   it("should handle invalid JSON gracefully and return defaults", async () => {
     writeFileSync(join(configDir, "octto.json"), "{ not valid json }");
 

@@ -63,6 +63,7 @@ function resolveArgs(args: Record<string, unknown>, messages: readonly ChatMessa
 
 interface ChatRequest {
   readonly model?: string;
+  readonly temperature?: number;
   readonly messages?: readonly ChatMessage[];
   readonly stream?: boolean;
 }
@@ -167,7 +168,14 @@ function completionBody(model: string, turn: ScriptTurn, args: Record<string, un
 // Past the end of the script the model must stop, or opencode would loop forever.
 const EXHAUSTED: TextTurn = { text: "Script exhausted." };
 
+/** What each chat request carried, so specs can assert on generation settings that reached the wire. */
+interface SeenRequest {
+  readonly probe: boolean;
+  readonly temperature: number | null;
+}
+
 export function createStubProvider(scriptPath: string, port: number): ReturnType<typeof Bun.serve> {
+  const seen: SeenRequest[] = [];
   return Bun.serve({
     port,
     idleTimeout: 0,
@@ -175,6 +183,7 @@ export function createStubProvider(scriptPath: string, port: number): ReturnType
       const url = new URL(request.url);
 
       if (url.pathname === "/health") return new Response("ok");
+      if (url.pathname === "/seen") return Response.json(seen);
 
       if (url.pathname.endsWith("/models")) {
         return Response.json({ object: "list", data: [{ id: "stub-model", object: "model" }] });
@@ -187,6 +196,10 @@ export function createStubProvider(scriptPath: string, port: number): ReturnType
       const body: unknown = await request.json();
       if (!isChatRequest(body)) return new Response("bad request", { status: 400 });
 
+      seen.push({
+        probe: JSON.stringify(body.messages ?? []).includes(PROBE_MARKER),
+        temperature: body.temperature ?? null,
+      });
       const script = await loadScript(scriptPath);
       const index = assistantTurnsSoFar(body);
       const turn = probeReplyFor(body) ?? script[index] ?? EXHAUSTED;

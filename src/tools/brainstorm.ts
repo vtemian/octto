@@ -37,9 +37,16 @@ const COLLECTION_STOPS = {
   NO_ANSWER_WITHIN_TIMEOUT: "no_answer_within_timeout",
   ITERATION_CAP: "iteration_cap",
   STALLED: "stalled",
+  ABORTED: "aborted",
 } as const;
 
+const ABORTED_RESULT =
+  "<brainstorm_interrupted>The call was interrupted; call await_brainstorm_complete again to resume.</brainstorm_interrupted>";
+
 type CollectionStop = (typeof COLLECTION_STOPS)[keyof typeof COLLECTION_STOPS];
+
+const CONTINUE = "continue";
+type CollectionStep = CollectionStop | typeof CONTINUE;
 
 interface CollectionResult {
   state: BrainstormState | null;
@@ -97,16 +104,8 @@ async function processOneAnswer(
   sessionId: string,
   browserSessionId: string,
   probe: ProbeRunner,
-): Promise<"continue" | "break" | "stalled"> {
-  if (!answer.completed) {
-    if (answer.status === STATUSES.NONE_PENDING) {
-      // flushPending empties the array, so read it first.
-      const mayStillPushQuestions = pending.length > 0;
-      await flushPending(pending);
-      return mayStillPushQuestions ? "continue" : "stalled";
-    }
-    return answer.status === STATUSES.TIMEOUT ? "break" : "continue";
-  }
+): Promise<CollectionStep> {
+  if (!answer.completed) return stepWithoutAnswer(answer, pending);
 
   if (isCompletedWithAnswer(answer)) {
     enqueueAnswerProcessing(
@@ -120,7 +119,17 @@ async function processOneAnswer(
       pending,
     );
   }
-  return "continue";
+  return CONTINUE;
+}
+
+async function stepWithoutAnswer(answer: PendingAnswer, pending: Promise<void>[]): Promise<CollectionStep> {
+  if (answer.status === STATUSES.ABORTED) return COLLECTION_STOPS.ABORTED;
+  if (answer.status === STATUSES.TIMEOUT) return COLLECTION_STOPS.NO_ANSWER_WITHIN_TIMEOUT;
+  if (answer.status !== STATUSES.NONE_PENDING) return CONTINUE;
+  // flushPending empties the array, so read it first.
+  const mayStillPushQuestions = pending.length > 0;
+  await flushPending(pending);
+  return mayStillPushQuestions ? CONTINUE : COLLECTION_STOPS.STALLED;
 }
 
 async function collectAnswers(
@@ -129,6 +138,7 @@ async function collectAnswers(
   sessionId: string,
   browserSessionId: string,
   probe: ProbeRunner,
+  signal: AbortSignal | undefined,
 ): Promise<CollectionResult> {
   const pending: Promise<void>[] = [];
   let stoppedBecause: CollectionStop = COLLECTION_STOPS.ITERATION_CAP;
@@ -143,15 +153,12 @@ async function collectAnswers(
       session_id: browserSessionId,
       block: true,
       timeout: DEFAULT_ANSWER_TIMEOUT_MS,
+      signal,
     });
 
-    const action = await processOneAnswer(answer, pending, stateStore, sessions, sessionId, browserSessionId, probe);
-    if (action === "break") {
-      stoppedBecause = COLLECTION_STOPS.NO_ANSWER_WITHIN_TIMEOUT;
-      break;
-    }
-    if (action === "stalled") {
-      stoppedBecause = COLLECTION_STOPS.STALLED;
+    const step = await processOneAnswer(answer, pending, stateStore, sessions, sessionId, browserSessionId, probe);
+    if (step !== CONTINUE) {
+      stoppedBecause = step;
       break;
     }
   }
@@ -200,11 +207,16 @@ function isReviewResponse(value: unknown): value is { decision: string; feedback
   return typeof value === "object" && value !== null && "decision" in value;
 }
 
-async function waitForReviewApproval(sessions: SessionStore, browserSessionId: string): Promise<ReviewResult> {
+async function waitForReviewApproval(
+  sessions: SessionStore,
+  browserSessionId: string,
+  signal: AbortSignal | undefined,
+): Promise<ReviewResult> {
   const reviewAnswer = await sessions.getNextAnswer({
     session_id: browserSessionId,
     block: true,
     timeout: REVIEW_TIMEOUT_MS,
+    signal,
   });
 
   if (!reviewAnswer.completed || !isReviewResponse(reviewAnswer.response)) {
@@ -401,31 +413,41 @@ This is the recommended way to run a brainstorm - just create_brainstorm then aw
       session_id: z.string().describe("Brainstorm session ID (state session)"),
       browser_session_id: z.string().describe("Browser session ID (for collecting answers)"),
     },
-    execute: async (args) => {
+    execute: async (args, call) => {
       const { state, allComplete, stoppedBecause } = await collectAnswers(
         store,
         sessions,
         args.session_id,
         args.browser_session_id,
         probe,
+        call.signal,
       );
 
       if (!state) return "<error>Session lost</error>";
+      // The host has dropped this call; pushing the plan review now would leave
+      // it waiting for an approval nobody collects.
+      if (stoppedBecause === COLLECTION_STOPS.ABORTED) return ABORTED_RESULT;
       if (!allComplete) return formatInProgressResult(state, stoppedBecause);
 
       const sections = buildReviewSections(state);
 
+      let reviewId: string;
       try {
-        sessions.pushQuestion(args.browser_session_id, QUESTIONS.SHOW_PLAN, {
+        reviewId = sessions.pushQuestion(args.browser_session_id, QUESTIONS.SHOW_PLAN, {
           question: "Review Design Plan",
           sections,
-        });
+        }).question_id;
       } catch (_error: unknown) {
         // Expected when the browser session has already ended
         return formatSkippedReviewResult(state);
       }
 
-      const { approved, feedback } = await waitForReviewApproval(sessions, args.browser_session_id);
+      const { approved, feedback } = await waitForReviewApproval(sessions, args.browser_session_id, call.signal);
+      if (call.signal?.aborted) {
+        // The retry pushes its own review; this one would linger unanswered.
+        sessions.cancelQuestion(reviewId);
+        return ABORTED_RESULT;
+      }
       return formatCompletionResult(state, approved, feedback);
     },
   });

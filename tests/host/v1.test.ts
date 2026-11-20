@@ -1,26 +1,27 @@
 import { describe, expect, it } from "bun:test";
 
 import { createClientProbe, joinTextParts, toV1Tool } from "../../src/host/v1";
-import type { OcttoTool } from "../../src/tools/types";
+import type { OcttoTool, ToolCall } from "../../src/tools/types";
 
 describe("toV1Tool", () => {
-  it("keeps description and args and forwards the host session id", async () => {
-    let seen: string | undefined;
+  it("keeps description and args and forwards the host session id and abort signal", async () => {
+    let seen: ToolCall | undefined;
     const core: OcttoTool = {
       description: "d",
       args: {},
       execute: async (_args, call) => {
-        seen = call.sessionID;
+        seen = call;
         return "ok";
       },
     };
+    const abort = new AbortController().signal;
 
     const v1 = toV1Tool(core);
-    const output = await v1.execute({}, { sessionID: "ses_host" } as any);
+    const output = await v1.execute({}, { sessionID: "ses_host", abort } as any);
 
     expect(v1.description).toBe("d");
     expect(output).toBe("ok");
-    expect(seen).toBe("ses_host");
+    expect(seen).toEqual({ sessionID: "ses_host", signal: abort });
   });
 });
 
@@ -40,7 +41,7 @@ describe("joinTextParts", () => {
 });
 
 describe("createClientProbe", () => {
-  function fakeClient(calls: { created: unknown[]; prompted: any[]; deleted: unknown[] }) {
+  function fakeClient(calls: { created: unknown[]; prompted: any[]; deleted: unknown[] }, error?: unknown) {
     return {
       session: {
         create: async (input: unknown) => {
@@ -49,7 +50,9 @@ describe("createClientProbe", () => {
         },
         prompt: async (input: unknown) => {
           calls.prompted.push(input);
-          return { data: { parts: [{ type: "text", text: '{"done": true, "finding": "f"}' }] } };
+          return {
+            data: { info: { error }, parts: error ? [] : [{ type: "text", text: '{"done": true, "finding": "f"}' }] },
+          };
         },
         delete: async (input: unknown) => {
           calls.deleted.push(input);
@@ -70,5 +73,24 @@ describe("createClientProbe", () => {
       body: { agent: "probe", tools: { "*": false }, parts: [{ type: "text", text: "ctx" }] },
     });
     expect(calls.deleted).toEqual([{ path: { id: "ses_probe" } }]);
+  });
+
+  it("throws the provider's message when the turn errored, and still deletes the session", async () => {
+    const calls = { created: [], prompted: [] as any[], deleted: [] };
+    const error = { name: "APIError", data: { message: "Unauthorized", statusCode: 401 } };
+
+    await expect(createClientProbe(fakeClient(calls, error) as any).run("probe", "ctx")).rejects.toThrow(
+      /^Unauthorized$/,
+    );
+    expect(calls.deleted).toEqual([{ path: { id: "ses_probe" } }]);
+  });
+
+  it("falls back to the error name when the error has no message", async () => {
+    const calls = { created: [], prompted: [] as any[], deleted: [] };
+    const error = { name: "MessageOutputLengthError", data: {} };
+
+    await expect(createClientProbe(fakeClient(calls, error) as any).run("probe", "ctx")).rejects.toThrow(
+      /^MessageOutputLengthError$/,
+    );
   });
 });

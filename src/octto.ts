@@ -23,6 +23,8 @@ export interface Octto {
   readonly agents: Record<AgentName, AgentConfig>;
   /** Agents whose model the user chose; the rest carry octto's built-in default. */
   readonly modelOverrides: ReadonlySet<AgentName>;
+  /** Agents whose temperature the user chose. */
+  readonly temperatureOverrides: ReadonlySet<AgentName>;
   /** The host conversation was deleted: end every octto session it owns. */
   onSessionDeleted(hostSessionId: string): Promise<void>;
   dispose(): Promise<void>;
@@ -60,6 +62,7 @@ export async function createOctto({ directory, probe, configDir }: OcttoOptions)
     tools,
     agents: customConfig.agents,
     modelOverrides: customConfig.modelOverrides,
+    temperatureOverrides: customConfig.temperatureOverrides,
     onSessionDeleted: (hostSessionId) => tracker.release(hostSessionId),
     dispose: () => sessions.cleanup(),
   };

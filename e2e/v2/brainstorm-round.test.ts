@@ -15,7 +15,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { octtoPort, type StubHandle, startStub, waitUntil } from "../specs/harness";
-import { type AnswererHandle, answerQuestions, type ServeHandle, startServe, writeV2Config } from "../specs/v2";
+import {
+  type AnswererHandle,
+  answerQuestions,
+  PROBE_TEMPERATURE,
+  type ServeHandle,
+  startServe,
+  writeV2Config,
+} from "../specs/v2";
 
 const PLUGIN_DIR = process.env.OCTTO_PLUGIN_DIR ?? "/work";
 const SCRIPT = join(import.meta.dir, "..", "scripts", "brainstorm-round.json");
@@ -59,17 +66,23 @@ describe("OpenCode 2: full brainstorm round", () => {
 
   it("registers the three octto agents", async () => {
     await waitUntil(async () => {
-      const agents = dataOf(await serve.api.get("/api/agent")) as { id: string }[];
-      return agents.some((a) => a.id === "octto");
+      // Until the server is ready the route answers with an error body, not a list.
+      const agents = dataOf(await serve.api.get("/api/agent"));
+      return Array.isArray(agents) && agents.some((a) => a?.id === "octto");
     }, "octto agents");
-    const agents = dataOf(await serve.api.get("/api/agent")) as { id: string; permissions: { effect: string }[] }[];
+    const agents = dataOf(await serve.api.get("/api/agent")) as {
+      id: string;
+      mode: string;
+      hidden: boolean;
+      permissions: { effect: string }[];
+    }[];
     expect(agents.map((a) => a.id)).toEqual(expect.arrayContaining(["octto", "bootstrapper", "probe"]));
-    // The host appends its own rules (browser: deny) after ours; the deny-all must be first.
-    expect(agents.find((a) => a.id === "probe")?.permissions[0]).toEqual({
-      action: "*",
-      resource: "*",
-      effect: "deny",
-    });
+    // Rules are last-match-wins and user rules land after ours, so the deny-all
+    // alone cannot hold; the subagent tool refuses primary and lists no hidden agents.
+    const probe = agents.find((a) => a.id === "probe");
+    expect(probe?.permissions[0]).toEqual({ action: "*", resource: "*", effect: "deny" });
+    expect(probe?.mode).toBe("primary");
+    expect(probe?.hidden).toBe(true);
   });
 
   it("runs create_brainstorm, two probes and the plan review to approval", async () => {
@@ -98,5 +111,15 @@ describe("OpenCode 2: full brainstorm round", () => {
     expect(transcript).toContain("Redis with TTL expiry");
     expect(transcript).not.toContain("No tool named");
     expect(answerer.answered).toEqual(["pick_one", "pick_one", "show_plan"]);
+
+    // v2 drops an agent's request body; only the context hook reaches the wire.
+    const seen = (await (await fetch(`http://127.0.0.1:${stub.port}/seen`)).json()) as {
+      probe: boolean;
+      temperature: number | null;
+    }[];
+    const probes = seen.filter((request) => request.probe);
+    expect(probes.length).toBeGreaterThan(0);
+    expect(probes.every((request) => request.temperature === PROBE_TEMPERATURE)).toBe(true);
+    expect(seen.filter((request) => !request.probe).every((request) => request.temperature === null)).toBe(true);
   });
 });

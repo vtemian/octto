@@ -41,6 +41,8 @@ function isQuestion(value: unknown): value is QuestionMessage {
   return typeof value === "object" && value !== null && "type" in value && value.type === "question";
 }
 
+export const PROBE_TEMPERATURE = 0.2;
+
 /** OpenCode 2 reads `plugins` and `providers`; the stub provider needs a credential via env. */
 export function writeV2Config(home: string, pluginDir: string): void {
   const dir = join(home, ".config", "opencode");
@@ -63,7 +65,11 @@ export function writeV2Config(home: string, pluginDir: string): void {
 
   writeFileSync(join(dir, "opencode.jsonc"), JSON.stringify(config, null, 2));
   // Probe sessions run on the agent's own model, which defaults to one the stub host lacks.
-  writeFileSync(join(dir, "octto.json"), JSON.stringify({ model: "stub/stub-model" }));
+  // The probe temperature checks that a user-set one reaches the wire on v2.
+  writeFileSync(
+    join(dir, "octto.json"),
+    JSON.stringify({ model: "stub/stub-model", agents: { probe: { temperature: PROBE_TEMPERATURE } } }),
+  );
 }
 
 function createApi(base: string, directory: string): Api {

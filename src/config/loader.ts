@@ -15,6 +15,8 @@ export interface CustomConfig {
   agents: Record<AgentName, AgentConfig>;
   /** Agents whose model the user set in octto.json, rather than the built-in default. */
   modelOverrides: ReadonlySet<AgentName>;
+  /** Agents whose temperature the user set in octto.json. */
+  temperatureOverrides: ReadonlySet<AgentName>;
   port: number;
   fragments: Fragments;
 }
@@ -168,6 +170,7 @@ export async function loadCustomConfig(
   return {
     agents: mergedAgents,
     modelOverrides: collectModelOverrides(config),
+    temperatureOverrides: collectTemperatureOverrides(config),
     port: resolvePort(config?.port),
     fragments: config?.fragments,
   };
@@ -175,8 +178,16 @@ export async function loadCustomConfig(
 
 function collectModelOverrides(config: OcttoConfig | null): ReadonlySet<AgentName> {
   if (config?.model) return new Set(VALID_AGENT_NAMES);
+  return agentsSetting(config, "model");
+}
+
+function collectTemperatureOverrides(config: OcttoConfig | null): ReadonlySet<AgentName> {
+  return agentsSetting(config, "temperature");
+}
+
+function agentsSetting(config: OcttoConfig | null, key: "model" | "temperature"): ReadonlySet<AgentName> {
   const overridden = Object.entries(config?.agents ?? {})
-    .filter(([, override]) => override?.model !== undefined)
+    .filter(([, override]) => override?.[key] !== undefined)
     .map(([name]) => name)
     .filter(isAgentName);
   return new Set(overridden);

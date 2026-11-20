@@ -91,5 +91,53 @@ describe("Brainstorm Tools", () => {
       expect(output).toContain("cannot progress on its own");
       expect(output).toContain("end_brainstorm");
     });
+
+    it("stops waiting when the call is interrupted, without pushing the plan review", async () => {
+      const stateStore = createStateStore(tempDir);
+      await stateStore.createSession("ses_int", "req", [{ id: "b1", scope: "scope one" }]);
+      const browser = await sessions.startSession({ questions: [{ type: "confirm", config: { question: "Go?" } }] });
+      const interrupted = new AbortController();
+
+      const call = tools.await_brainstorm_complete.execute(
+        { session_id: "ses_int", browser_session_id: browser.session_id },
+        { signal: interrupted.signal },
+      );
+      interrupted.abort();
+
+      expect(await call).toContain("<brainstorm_interrupted>");
+      const types = sessions.listQuestions(browser.session_id).questions.map((q) => q.type);
+      expect(types).toEqual(["confirm"]);
+    });
+
+    it("cancels its plan review when interrupted, so the retry's review is the only one open", async () => {
+      const stateStore = createStateStore(tempDir);
+      await stateStore.createSession("ses_rev", "req", [{ id: "b1", scope: "scope one" }]);
+      await stateStore.completeBranch("ses_rev", "b1", "done");
+      const browser = await sessions.startSession({});
+      const interrupted = new AbortController();
+
+      const call = tools.await_brainstorm_complete.execute(
+        { session_id: "ses_rev", browser_session_id: browser.session_id },
+        { signal: interrupted.signal },
+      );
+      await waitForQuestion(sessions, browser.session_id, "show_plan");
+      interrupted.abort();
+
+      expect(await call).toContain("<brainstorm_interrupted>");
+      const review = sessions.listQuestions(browser.session_id).questions.find((q) => q.type === "show_plan");
+      expect(review?.status).toBe("cancelled");
+    });
   });
 });
+
+async function waitForQuestion(
+  sessions: ReturnType<typeof createSessionStore>,
+  sessionId: string,
+  type: string,
+): Promise<void> {
+  const deadline = Date.now() + 2000;
+  while (!sessions.listQuestions(sessionId).questions.some((q) => q.type === type)) {
+    if (Date.now() > deadline) throw new Error(`no ${type} question in time`);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}

@@ -46,6 +46,7 @@ export async function setup(host: V2Host, configDir?: string): Promise<Plugin.Cl
     }
   });
   await registerAgents(host, octto, models);
+  await applyTemperatures(host, octto);
   const stopWatching = watchSessionDeletes(host, octto);
 
   return async () => {
@@ -92,7 +93,7 @@ function toV2Tool(name: string, core: OcttoTool): V2Tool {
     // call these by name, so they must be listed as direct function tools.
     options: { codemode: false },
     execute: async (input: unknown, context) => ({
-      content: await core.execute(input, { sessionID: context.sessionID }),
+      content: await core.execute(input, { sessionID: context.sessionID, signal: context.signal }),
     }),
   };
 }
@@ -124,12 +125,19 @@ function applyConfig(agent: AgentRecord, config: AgentConfig, model: ModelRef | 
   if (config.mode !== undefined) agent.mode = config.mode;
   if (config.prompt !== undefined) agent.system = config.prompt;
   if (model !== undefined) agent.model = model;
-  if (config.temperature !== undefined) agent.request.body.temperature = config.temperature;
   if (config.maxSteps !== undefined) agent.steps = config.maxSteps;
 }
 
+/**
+ * Agent permissions are last-match-wins and the host appends user rules after
+ * ours, so the deny-all alone does not hold. The subagent tool refuses primary
+ * agents and lists no hidden ones, which keeps every route into the probe on
+ * octto's own sessions, where the session-level deny-all comes last.
+ */
 function lockDownProbe(agent: AgentRecord): void {
   agent.permissions = [...DENY_ALL_TOOLS];
+  agent.mode = "primary";
+  agent.hidden = true;
 }
 
 /**
@@ -148,6 +156,25 @@ async function prepareAgents(octto: Octto, models: Map<string, ModelRef>): Promi
     });
   }
   return prepared;
+}
+
+/**
+ * v2 never reads an agent's request body, so temperature only reaches the wire
+ * through the session context hook. The hook skips the host's capability check,
+ * so only a temperature the user chose is sent: octto's built-in ones would
+ * break reasoning models that reject the parameter.
+ */
+async function applyTemperatures(host: V2Host, octto: Octto): Promise<void> {
+  const temperatures = new Map<string, number>();
+  for (const name of octto.temperatureOverrides) {
+    const temperature = octto.agents[name].temperature;
+    if (temperature !== undefined) temperatures.set(name, temperature);
+  }
+  if (temperatures.size === 0) return;
+  await host.session.hook("context", (request) => {
+    const temperature = temperatures.get(request.agent);
+    if (temperature !== undefined) request.options.temperature = temperature;
+  });
 }
 
 async function registerAgents(host: V2Host, octto: Octto, models: Map<string, ModelRef>): Promise<void> {

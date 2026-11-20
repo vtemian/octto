@@ -35,6 +35,7 @@ function createHost(directory = "/tmp/octto-v2-test") {
   const events: any[] = [];
   let push: ((event: any) => void) | undefined;
   const sessions = { created: [] as any[], prompted: [] as any[], waited: [] as string[], removed: [] as string[] };
+  const hooks = new Map<string, (input: any) => void>();
 
   const host = {
     location: { directory },
@@ -98,10 +99,14 @@ function createHost(directory = "/tmp/octto-v2-test") {
       remove: async ({ sessionID }: { sessionID: string }) => {
         sessions.removed.push(sessionID);
       },
+      hook: async (name: string, callback: (input: any) => void) => {
+        hooks.set(name, callback);
+        return { dispose: async () => {} };
+      },
     },
   };
 
-  return { host: host as unknown as V2Host, tools, agents, sessions, emit: (event: any) => push?.(event) };
+  return { host: host as unknown as V2Host, tools, agents, sessions, hooks, emit: (event: any) => push?.(event) };
 }
 
 /**
@@ -194,7 +199,29 @@ describe("v2 setup", () => {
     const octto = agents.get("octto")!;
     expect(octto.mode).toBe("primary");
     expect(octto.system).toContain("brainstorming");
-    expect(octto.request.body.temperature).toBe(0.7);
+    // v2 never reads the request body, so nothing is written there.
+    expect(octto.request.body).toEqual({});
+  });
+
+  it("sends no temperature when the user set none, since built-in ones break reasoning models", async () => {
+    const { host, hooks } = createHost();
+    cleanup = await setup(host, configDir);
+
+    expect(hooks.has("context")).toBe(false);
+  });
+
+  it("sends a temperature the user chose through the session context hook, for that agent only", async () => {
+    writeOcttoConfig({ agents: { probe: { temperature: 0.2 } } });
+    const { host, hooks } = createHost();
+    cleanup = await setup(host, configDir);
+
+    const probeRequest = { agent: "probe", options: {} as Record<string, unknown> };
+    const octtoRequest = { agent: "octto", options: {} as Record<string, unknown> };
+    hooks.get("context")!(probeRequest);
+    hooks.get("context")!(octtoRequest);
+
+    expect(probeRequest.options).toEqual({ temperature: 0.2 });
+    expect(octtoRequest.options).toEqual({});
   });
 
   it("leaves the built-in model unpinned, so a host that lacks it falls back to its own default", async () => {
@@ -218,6 +245,24 @@ describe("v2 setup", () => {
     expect(agents.get("octto")!.model).toBeUndefined();
     await runOneProbe(tools);
     expect(sessions.created.at(-1).model).toEqual(pinned);
+  });
+
+  it("forwards the host's abort signal, so an interrupted blocking call stops waiting", async () => {
+    const { host, tools } = createHost();
+    cleanup = await setup(host, configDir);
+    const started = await tools
+      .get("start_session")!
+      .execute({ title: "t", questions: [{ type: "confirm", config: { question: "Go?" } }] }, { sessionID: "host_a" });
+    const sessionId = String(started.content).match(/\| Session ID \| (\S+) \|/)![1];
+
+    const result = await tools
+      .get("get_next_answer")!
+      .execute({ session_id: sessionId, block: true, timeout: 60_000 }, {
+        sessionID: "host_a",
+        signal: AbortSignal.abort(),
+      } as any);
+
+    expect(String(result.content)).toContain("**Status:** aborted");
   });
 
   it("still loads when octto.json names a model without a provider, falling back to the host default", async () => {
@@ -245,6 +290,15 @@ describe("v2 setup", () => {
 
     expect(agents.get("probe")!.permissions).toEqual([{ action: "*", resource: "*", effect: "deny" }]);
     expect(agents.get("octto")!.permissions).toEqual([]);
+  });
+
+  it("keeps the probe out of the host's subagent tool, where user allow rules would override the deny-all", async () => {
+    const { host, agents } = createHost();
+    cleanup = await setup(host, configDir);
+
+    expect(agents.get("probe")!.mode).toBe("primary");
+    expect(agents.get("probe")!.hidden).toBe(true);
+    expect(agents.get("bootstrapper")!.hidden).toBe(false);
   });
 
   it("keeps relaying session deletes after one handler throws", async () => {
@@ -316,7 +370,7 @@ describe("toAgentInfo", () => {
     expect(agent.mode).toBe("subagent");
     expect(agent.system).toBe("sys");
     expect(agent.model).toEqual({ providerID: "openai", id: "gpt-5.3-codex", variant: "high" });
-    expect(agent.request.body.temperature).toBe(0.5);
+    expect(agent.request.body).toEqual({});
     expect(agent.steps).toBe(7);
   });
 

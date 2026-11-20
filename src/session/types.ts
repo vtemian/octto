@@ -27,9 +27,10 @@ export const STATUSES = {
   CANCELLED: "cancelled",
   TIMEOUT: "timeout",
   NONE_PENDING: "none_pending",
+  ABORTED: "aborted",
 } as const;
 
-export type QuestionStatus = (typeof STATUSES)[Exclude<keyof typeof STATUSES, "NONE_PENDING">];
+export type QuestionStatus = (typeof STATUSES)[Exclude<keyof typeof STATUSES, "NONE_PENDING" | "ABORTED">];
 
 export interface Question {
   readonly id: string;
@@ -232,19 +233,23 @@ export interface GetAnswerInput {
   question_id: string;
   block?: boolean;
   timeout?: number;
+  /** Withdraws a blocking wait, so an interrupted call stops taking answers. */
+  signal?: AbortSignal;
 }
 
 export interface GetAnswerOutput {
   completed: boolean;
-  status: QuestionStatus;
+  status: QuestionStatus | typeof STATUSES.ABORTED;
   response?: Answer;
-  reason?: "timeout" | "cancelled" | "pending";
+  reason?: "timeout" | "cancelled" | "pending" | typeof STATUSES.ABORTED;
 }
 
 export interface GetNextAnswerInput {
   session_id: string;
   block?: boolean;
   timeout?: number;
+  /** Withdraws a blocking wait, so an interrupted call stops taking answers. */
+  signal?: AbortSignal;
 }
 
 export type AnswerStatus = (typeof STATUSES)[keyof typeof STATUSES];
@@ -255,7 +260,7 @@ export interface GetNextAnswerOutput {
   question_type?: QuestionType;
   status: AnswerStatus;
   response?: Answer;
-  reason?: typeof STATUSES.TIMEOUT | typeof STATUSES.NONE_PENDING;
+  reason?: typeof STATUSES.TIMEOUT | typeof STATUSES.NONE_PENDING | typeof STATUSES.ABORTED;
 }
 
 export interface ListQuestionsOutput {

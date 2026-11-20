@@ -62,6 +62,20 @@ prior assistant messages, which keeps the stub stateless across retries.
 Session ids are minted at runtime and cannot be hardcoded, so `{"$extract": "<regex>"}`
 is replaced by the last match seen anywhere in the conversation so far.
 
+## OpenCode 2 tier
+
+`bun run test:e2e:v2` builds `e2e/Dockerfile.v2` (the v2 installer, no browser) and runs
+`e2e/v2/`. The spec drives `opencode serve` over its HTTP API and answers octto's questions
+over the websocket, because `opencode run --standalone` stalled intermittently on 2.0.31.
+Facts it depends on:
+
+- OpenCode 2 resolves a directory plugin by a root `index.js` and ignores `package.json`
+  `exports`; octto ships that shim, so `plugins: ["/work"]` works.
+- Plugin tools are Code Mode only unless registered with `codemode: false`; the adapter
+  does that, and the spec asserts the model can call `create_brainstorm` by name.
+- The stub's `STUB_PROBE_REPLY` answers the probe agent's sessions, which turn counting
+  cannot distinguish from the main conversation.
+
 ## Notes for future work
 
 - Local plugins load by **absolute path in the `plugin` array**. The documented

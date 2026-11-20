@@ -5,7 +5,7 @@ import { QUESTION_TYPES_XML } from "./prompts";
 export const agent: AgentConfig = {
   description: "Evaluates branch Q&A and decides whether to ask more or complete",
   mode: "subagent",
-  model: "openai/gpt-5.2-codex",
+  model: "openai/gpt-5.3-codex",
   temperature: 0.5,
   prompt: `<purpose>
 You evaluate a brainstorming branch's Q&A history and decide:

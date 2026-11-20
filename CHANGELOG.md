@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-11-20
+
+### Added
+- OpenCode 2 support. The package default-exports `{ id, setup, server }`: OpenCode 2 loads it through `setup()`, OpenCode 1 (1.18.29 or newer) through `server()`.
+
+- OpenCode 2 end-to-end tier (`bun run test:e2e:v2`, `e2e/Dockerfile.v2`): a full brainstorm round through the real v2 host, with the probe agent answered by the stub model.
+
+### Fixed
+- Under OpenCode 2, octto tools are registered with `codemode: false`. Without it the host lists plugin tools only inside Code Mode's `execute`, and a model calling `create_brainstorm` by name got "No tool named create_brainstorm is currently available".
+- A probe that fails (an errored or incomplete model turn, an unroutable model, an unreachable provider) closes its branch with "Probe failed: <reason>" as the finding, with the provider's reason read from the turn's idle marker when no reply exists. Before, the throw left the branch exploring with nothing pending, and `await_brainstorm_complete` stalled before plan review.
+- Under OpenCode 2, a model set in `octto.json` is pinned on the agent and on its probe sessions (v2 takes a session's model only from `session.create`). The built-in default model is not pinned on v2, so a host without it uses its own default instead of failing every probe.
+- Under OpenCode 2, an `octto.json` model without a `provider/` prefix (or with an empty `#variant`) is ignored with a warning and the host default is used. Before, setup rejected and the host dropped octto entirely.
+- The octto agent bootstraps through the host's real subagent tool (`subagent` on v2, `task` on v1) instead of `background_task`, which neither host has.
+- Under OpenCode 1, the probe runs with every tool denied (`tools: {"*": false}`). The empty map it sent added no rules, so a probe tool call could hit a permission prompt in a session nobody sees and hang `await_brainstorm_complete`.
+- Brainstorm state is written to `<project>/.octto` instead of `.octto` under the host's working directory, which under OpenCode 2's background service is `$HOME`.
+- Brainstorm state is saved atomically (staging file, then rename). A concurrent read could catch the file truncated mid-write, fail to parse, and drop that answer's probe, which stalled the brainstorm.
+- Brainstorm snapshots and temporary save files are readable only by their owner.
+- Host session deletion closes only the browser sessions that conversation opened, including a browser session still being created when the host session was deleted.
+- An interrupted `await_brainstorm_complete`, `get_next_answer` or `get_answer` withdraws its wait. Before, the orphaned call stayed first in line and took the next answer from the retry; an interrupted plan review is now cancelled too, so the retry's review is the only one open.
+- Under OpenCode 1, a probe turn that errored (HTTP 200 with the error on `info`) closes its branch with the provider's message instead of "Could not parse probe response".
+- Under OpenCode 2, a temperature set in `octto.json` is sent through the session context hook; v2 never read the agent request body octto wrote it to. Built-in temperatures are not sent on v2, since the hook skips the host's capability check and reasoning models reject the parameter.
+- Under OpenCode 2, the probe agent is registered as hidden and primary, which keeps it out of the host's subagent tool. Agent permissions are last-match-wins with user rules appended after octto's, so a user allow rule could re-enable tools for a probe reached that way.
+- The published type declarations no longer import `@opencode/plugin`, a dev dependency that consumers do not have.
+
+### Changed
+- Default agent model moved from `openai/gpt-5.2-codex`, which both hosts dropped from their catalogues, to `openai/gpt-5.3-codex`. Override it in `octto.json` as before.
+- **Breaking:** OpenCode 1 releases older than 1.18.29 are no longer supported; they expect a function default export.
+- Tools are defined host-agnostically on zod and the probe agent is called through a `ProbeRunner`, so both hosts share one core.
+- `@opencode/plugin` 2.0.31 is a dev dependency for types only; OpenCode 2 supplies the runtime module and the bundle keeps it external.
+- A root `index.js` shim re-exports `dist/index.js`: OpenCode 2 resolves directory plugins by that file and ignores `package.json` exports.
+- zod is pinned to one copy via `overrides`, so the schemas handed to OpenCode 1 come from 4.3.5 instead of the SDK's nested 4.1.8.
+
 ## [0.4.5] - 2026-09-23
 
 ### Changed

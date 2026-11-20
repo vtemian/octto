@@ -20,15 +20,15 @@ function createMockContext(): PluginInput {
 
 describe("OcttoPlugin", () => {
   describe("initialization", () => {
-    it("should export a default plugin function", async () => {
+    it("exposes the v1 server entrypoint", async () => {
       const { default: plugin } = await import("../src");
-      expect(typeof plugin).toBe("function");
+      expect(typeof plugin.server).toBe("function");
     });
 
     it("should return tools when initialized", async () => {
       const { default: plugin } = await import("../src");
 
-      const result = await plugin(createMockContext());
+      const result = await plugin.server(createMockContext());
 
       expect(result.tool).toBeDefined();
       expect(typeof result.tool).toBe("object");
@@ -37,7 +37,7 @@ describe("OcttoPlugin", () => {
     it("should include start_session tool", async () => {
       const { default: plugin } = await import("../src");
 
-      const result = await plugin(createMockContext());
+      const result = await plugin.server(createMockContext());
 
       expect(result.tool!.start_session).toBeDefined();
       // eslint-disable-next-line @typescript-eslint/unbound-method
@@ -47,7 +47,7 @@ describe("OcttoPlugin", () => {
     it("should include push_question tool", async () => {
       const { default: plugin } = await import("../src");
 
-      const result = await plugin(createMockContext());
+      const result = await plugin.server(createMockContext());
 
       // brainstorm tool removed (caused deadlock), use push_question instead
       expect(result.tool!.push_question).toBeDefined();
@@ -58,7 +58,7 @@ describe("OcttoPlugin", () => {
     it("should include event handler", async () => {
       const { default: plugin } = await import("../src");
 
-      const result = await plugin(createMockContext());
+      const result = await plugin.server(createMockContext());
 
       expect(result.event).toBeDefined();
       expect(typeof result.event).toBe("function");
@@ -69,7 +69,7 @@ describe("OcttoPlugin", () => {
     it("should handle session.deleted event without error when no sessions exist", async () => {
       const { default: plugin } = await import("../src");
 
-      const result = await plugin(createMockContext());
+      const result = await plugin.server(createMockContext());
 
       // Should not throw when handling event for unknown session
       await expect(
@@ -85,7 +85,7 @@ describe("OcttoPlugin", () => {
     it("should ignore non-session.deleted events", async () => {
       const { default: plugin } = await import("../src");
 
-      const result = await plugin(createMockContext());
+      const result = await plugin.server(createMockContext());
 
       // Should not throw for other event types
       await expect(

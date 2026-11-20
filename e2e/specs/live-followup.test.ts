@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { type CdpSession, connect, waitForTarget, waitInPage } from "./cdp";
+import { type CdpSession, connect, targetIds, waitForTarget, waitInPage } from "./cdp";
 import { cdpPort, octtoPort, readUntil, spawnOpencode, writeLiveConfig } from "./harness";
 
 const PLUGIN_PATH = "/work/dist/index.js";
@@ -30,9 +30,11 @@ describe.skipIf(!LIVE_MODEL)("octto driven by a live model", () => {
 
     try {
       writeLiveConfig(home, [PLUGIN_PATH], LIVE_MODEL ?? "");
+      // A tab an earlier spec asked Chrome to close can still be listed on the same port.
+      const before = await targetIds(cdpPort());
       const run = spawnOpencode(home, "build", PROMPT);
 
-      const target = await waitForTarget(cdpPort(), `http://localhost:${octtoPort()}`, TAB_TIMEOUT_MS);
+      const target = await waitForTarget(cdpPort(), `http://localhost:${octtoPort()}`, TAB_TIMEOUT_MS, before);
       page = await connect(target.webSocketDebuggerUrl ?? "");
 
       // Answer with whatever control the model chose to render: this tier is about

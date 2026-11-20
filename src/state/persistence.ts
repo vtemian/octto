@@ -1,8 +1,11 @@
+import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { open, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import * as v from "valibot";
 
+import { STATE_DIR } from "@/constants";
 import type { Answer, BaseConfig, QuestionType } from "@/session";
 import { QUESTION_TYPES } from "@/session";
 
@@ -56,6 +59,9 @@ export interface StatePersistence {
   list: () => Promise<string[]>;
 }
 
+const STAGING_SUFFIX = ".tmp";
+const OWNER_READ_WRITE = 0o600;
+
 function validateSessionId(sessionId: string): void {
   if (!/^[a-zA-Z0-9_-]+$/.test(sessionId)) {
     throw new Error(`Invalid session ID: ${sessionId}`);
@@ -83,13 +89,32 @@ function parseBrainstormState(content: string, sessionId: string): BrainstormSta
   return parseResult.output;
 }
 
-export function createStatePersistence(baseDir = ".octto"): StatePersistence {
+async function writeStateAtomically(filePath: string, state: BrainstormState): Promise<void> {
+  // Readers do not lock. Replace the old snapshot only after the private staging file is complete.
+  const staging = `${filePath}.${randomUUID()}${STAGING_SUFFIX}`;
+  const file = await open(staging, "wx", OWNER_READ_WRITE);
+  try {
+    try {
+      await file.writeFile(JSON.stringify(state, null, 2));
+    } finally {
+      await file.close();
+    }
+    await rename(staging, filePath);
+  } catch (error: unknown) {
+    await rm(staging, { force: true }).catch((cleanupError: unknown) => {
+      console.error(`[octto] Failed to remove staged state for ${state.session_id}:`, cleanupError);
+    });
+    throw error;
+  }
+}
+
+export function createStatePersistence(baseDir = STATE_DIR): StatePersistence {
   return {
     async save(state: BrainstormState): Promise<void> {
       ensureDir(baseDir);
       const filePath = getFilePath(baseDir, state.session_id);
       state.updated_at = Date.now();
-      await Bun.write(filePath, JSON.stringify(state, null, 2));
+      await writeStateAtomically(filePath, state);
     },
 
     async load(sessionId: string): Promise<BrainstormState | null> {

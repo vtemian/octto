@@ -1,4 +1,4 @@
-import { tool } from "@opencode-ai/plugin/tool";
+import { z } from "zod";
 
 import type { SessionStore } from "@/session";
 import type { ConfirmConfig, PickManyConfig, PickOneConfig, RankConfig, RateConfig } from "@/types";
@@ -12,12 +12,12 @@ const CONTEXT_DESCRIPTION = "Instructions/context";
 const DEFAULT_RATE_MIN = 1;
 const DEFAULT_RATE_MAX = 5;
 
-const optionsSchema = tool.schema
+const optionsSchema = z
   .array(
-    tool.schema.object({
-      id: tool.schema.string().describe("Unique option identifier"),
-      label: tool.schema.string().describe("Display label"),
-      description: tool.schema.string().optional().describe("Optional description"),
+    z.object({
+      id: z.string().describe("Unique option identifier"),
+      label: z.string().describe("Display label"),
+      description: z.string().optional().describe("Optional description"),
     }),
   )
   .describe("Available options");
@@ -36,10 +36,10 @@ function buildPickOne(createTool: ToolFactory): OcttoTool {
 Response format: { selected: string } where selected is the chosen option id.
 With allowOther, the user may answer "other": then selected is "other" and the freetext is in the other field.`,
     args: {
-      question: tool.schema.string().describe(QUESTION_DESCRIPTION),
+      question: z.string().describe(QUESTION_DESCRIPTION),
       options: optionsSchema,
-      recommended: tool.schema.string().optional().describe("Recommended option id (highlighted)"),
-      allowOther: tool.schema.boolean().optional().describe("Allow custom 'other' input"),
+      recommended: z.string().optional().describe("Recommended option id (highlighted)"),
+      allowOther: z.boolean().optional().describe("Allow custom 'other' input"),
     },
     validate: requireOptions,
     toConfig: (args) => ({
@@ -58,12 +58,12 @@ function buildPickMany(createTool: ToolFactory): OcttoTool {
 Response format: { selected: string[] } where selected is array of chosen option ids.
 With allowOther, the user may add "other": then selected contains "other" and the freetext is in the other field.`,
     args: {
-      question: tool.schema.string().describe(QUESTION_DESCRIPTION),
+      question: z.string().describe(QUESTION_DESCRIPTION),
       options: optionsSchema,
-      recommended: tool.schema.array(tool.schema.string()).optional().describe("Recommended option ids"),
-      min: tool.schema.number().optional().describe("Minimum selections required"),
-      max: tool.schema.number().optional().describe("Maximum selections allowed"),
-      allowOther: tool.schema.boolean().optional().describe("Allow custom 'other' input"),
+      recommended: z.array(z.string()).optional().describe("Recommended option ids"),
+      min: z.number().optional().describe("Minimum selections required"),
+      max: z.number().optional().describe("Maximum selections allowed"),
+      allowOther: z.boolean().optional().describe("Allow custom 'other' input"),
     },
     validate: (args) => {
       if (!args.options || args.options.length === 0) return OPTIONS_EMPTY_ERROR;
@@ -89,11 +89,11 @@ function buildConfirm(createTool: ToolFactory): OcttoTool {
     description: `Ask user for Yes/No confirmation.
 Response format: { choice: "yes" | "no" | "cancel" }`,
     args: {
-      question: tool.schema.string().describe(QUESTION_DESCRIPTION),
-      context: tool.schema.string().optional().describe("Additional context/details"),
-      yesLabel: tool.schema.string().optional().describe("Custom label for yes button"),
-      noLabel: tool.schema.string().optional().describe("Custom label for no button"),
-      allowCancel: tool.schema.boolean().optional().describe("Show cancel option"),
+      question: z.string().describe(QUESTION_DESCRIPTION),
+      context: z.string().optional().describe("Additional context/details"),
+      yesLabel: z.string().optional().describe("Custom label for yes button"),
+      noLabel: z.string().optional().describe("Custom label for no button"),
+      allowCancel: z.boolean().optional().describe("Show cancel option"),
     },
     toConfig: (args) => ({
       question: args.question,
@@ -111,9 +111,9 @@ function buildRank(createTool: ToolFactory): OcttoTool {
     description: `Ask user to rank/order items by dragging.
 Response format: { ranked: string[] } where ranked is array of option ids in user's order (first = highest).`,
     args: {
-      question: tool.schema.string().describe(QUESTION_DESCRIPTION),
+      question: z.string().describe(QUESTION_DESCRIPTION),
       options: optionsSchema.describe("Items to rank"),
-      context: tool.schema.string().optional().describe(CONTEXT_DESCRIPTION),
+      context: z.string().optional().describe(CONTEXT_DESCRIPTION),
     },
     validate: requireOptions,
     toConfig: (args) => ({
@@ -130,11 +130,11 @@ function buildRate(createTool: ToolFactory): OcttoTool {
     description: `Ask user to rate items on a numeric scale.
 Response format: { ratings: Record<string, number> } where key is option id, value is rating.`,
     args: {
-      question: tool.schema.string().describe(QUESTION_DESCRIPTION),
+      question: z.string().describe(QUESTION_DESCRIPTION),
       options: optionsSchema.describe("Items to rate"),
-      min: tool.schema.number().optional().describe("Minimum rating value (default: 1)"),
-      max: tool.schema.number().optional().describe("Maximum rating value (default: 5)"),
-      step: tool.schema.number().optional().describe("Rating step (default: 1)"),
+      min: z.number().optional().describe("Minimum rating value (default: 1)"),
+      max: z.number().optional().describe("Maximum rating value (default: 5)"),
+      step: z.number().optional().describe("Rating step (default: 1)"),
     },
     validate: (args) => {
       if (!args.options || args.options.length === 0) return OPTIONS_EMPTY_ERROR;
@@ -184,12 +184,12 @@ function buildAskText(createTool: ToolFactory): OcttoTool {
     description: `Ask user for text input (single or multi-line).
 Response format: { text: string }`,
     args: {
-      question: tool.schema.string().describe(QUESTION_DESCRIPTION),
-      placeholder: tool.schema.string().optional().describe("Placeholder text"),
-      context: tool.schema.string().optional().describe(CONTEXT_DESCRIPTION),
-      multiline: tool.schema.boolean().optional().describe("Multi-line input (default: false)"),
-      minLength: tool.schema.number().optional().describe("Minimum text length"),
-      maxLength: tool.schema.number().optional().describe("Maximum text length"),
+      question: z.string().describe(QUESTION_DESCRIPTION),
+      placeholder: z.string().optional().describe("Placeholder text"),
+      context: z.string().optional().describe(CONTEXT_DESCRIPTION),
+      multiline: z.boolean().optional().describe("Multi-line input (default: false)"),
+      minLength: z.number().optional().describe("Minimum text length"),
+      maxLength: z.number().optional().describe("Maximum text length"),
     },
     toConfig: (args) => ({
       question: args.question,
@@ -215,10 +215,10 @@ function buildAskImage(createTool: ToolFactory): OcttoTool {
     type: "ask_image",
     description: "Ask user to upload/paste image(s).",
     args: {
-      question: tool.schema.string().describe(QUESTION_DESCRIPTION),
-      context: tool.schema.string().optional().describe(CONTEXT_DESCRIPTION),
-      multiple: tool.schema.boolean().optional().describe("Allow multiple images"),
-      maxImages: tool.schema.number().optional().describe("Maximum number of images"),
+      question: z.string().describe(QUESTION_DESCRIPTION),
+      context: z.string().optional().describe(CONTEXT_DESCRIPTION),
+      multiple: z.boolean().optional().describe("Allow multiple images"),
+      maxImages: z.number().optional().describe("Maximum number of images"),
     },
     toConfig: (args) => ({
       question: args.question,
@@ -244,12 +244,12 @@ function buildAskFile(createTool: ToolFactory): OcttoTool {
     type: "ask_file",
     description: "Ask user to upload file(s).",
     args: {
-      question: tool.schema.string().describe(QUESTION_DESCRIPTION),
-      context: tool.schema.string().optional().describe(CONTEXT_DESCRIPTION),
-      multiple: tool.schema.boolean().optional().describe("Allow multiple files"),
-      maxFiles: tool.schema.number().optional().describe("Maximum number of files"),
-      accept: tool.schema.array(tool.schema.string()).optional().describe("Allowed file types"),
-      maxSize: tool.schema.number().optional().describe("Maximum file size in bytes"),
+      question: z.string().describe(QUESTION_DESCRIPTION),
+      context: z.string().optional().describe(CONTEXT_DESCRIPTION),
+      multiple: z.boolean().optional().describe("Allow multiple files"),
+      maxFiles: z.number().optional().describe("Maximum number of files"),
+      accept: z.array(z.string()).optional().describe("Allowed file types"),
+      maxSize: z.number().optional().describe("Maximum file size in bytes"),
     },
     toConfig: (args) => ({
       question: args.question,
@@ -275,10 +275,10 @@ function buildAskCode(createTool: ToolFactory): OcttoTool {
     type: "ask_code",
     description: "Ask user for code input with syntax highlighting.",
     args: {
-      question: tool.schema.string().describe(QUESTION_DESCRIPTION),
-      context: tool.schema.string().optional().describe(CONTEXT_DESCRIPTION),
-      language: tool.schema.string().optional().describe("Programming language for highlighting"),
-      placeholder: tool.schema.string().optional().describe("Placeholder code"),
+      question: z.string().describe(QUESTION_DESCRIPTION),
+      context: z.string().optional().describe(CONTEXT_DESCRIPTION),
+      language: z.string().optional().describe("Programming language for highlighting"),
+      placeholder: z.string().optional().describe("Placeholder code"),
     },
     toConfig: (args) => ({
       question: args.question,
@@ -312,11 +312,11 @@ function buildShowDiff(createTool: ToolFactory): OcttoTool {
     type: "show_diff",
     description: "Show a diff and ask user to approve/reject/edit.",
     args: {
-      question: tool.schema.string().describe("Title/description of the change"),
-      before: tool.schema.string().describe("Original content"),
-      after: tool.schema.string().describe("Modified content"),
-      filePath: tool.schema.string().optional().describe("File path for context"),
-      language: tool.schema.string().optional().describe("Language for syntax highlighting"),
+      question: z.string().describe("Title/description of the change"),
+      before: z.string().describe("Original content"),
+      after: z.string().describe("Modified content"),
+      filePath: z.string().optional().describe("File path for context"),
+      language: z.string().optional().describe("Language for syntax highlighting"),
     },
     toConfig: (args) => ({
       question: args.question,
@@ -328,11 +328,11 @@ function buildShowDiff(createTool: ToolFactory): OcttoTool {
   });
 }
 
-const sectionSchema = tool.schema.array(
-  tool.schema.object({
-    id: tool.schema.string().describe("Section identifier"),
-    title: tool.schema.string().describe("Section title"),
-    content: tool.schema.string().describe("Section content (markdown)"),
+const sectionSchema = z.array(
+  z.object({
+    id: z.string().describe("Section identifier"),
+    title: z.string().describe("Section title"),
+    content: z.string().describe("Section content (markdown)"),
   }),
 );
 
@@ -349,9 +349,9 @@ function buildShowPlan(createTool: ToolFactory): OcttoTool {
     description: `Show a plan/document for user review with annotations.
 Response format: { approved: boolean, annotations?: Record<sectionId, string> }`,
     args: {
-      question: tool.schema.string().describe("Plan title"),
+      question: z.string().describe("Plan title"),
       sections: sectionSchema.optional().describe("Plan sections"),
-      markdown: tool.schema.string().optional().describe("Full markdown (alternative to sections)"),
+      markdown: z.string().optional().describe("Full markdown (alternative to sections)"),
     },
     toConfig: (args) => ({
       question: args.question,
@@ -361,13 +361,13 @@ Response format: { approved: boolean, annotations?: Record<sectionId, string> }`
   });
 }
 
-const prosConsOptionSchema = tool.schema.array(
-  tool.schema.object({
-    id: tool.schema.string().describe("Unique option identifier"),
-    label: tool.schema.string().describe("Display label"),
-    description: tool.schema.string().optional().describe("Optional description"),
-    pros: tool.schema.array(tool.schema.string()).optional().describe("Advantages"),
-    cons: tool.schema.array(tool.schema.string()).optional().describe("Disadvantages"),
+const prosConsOptionSchema = z.array(
+  z.object({
+    id: z.string().describe("Unique option identifier"),
+    label: z.string().describe("Display label"),
+    description: z.string().optional().describe("Optional description"),
+    pros: z.array(z.string()).optional().describe("Advantages"),
+    cons: z.array(z.string()).optional().describe("Disadvantages"),
   }),
 );
 
@@ -385,10 +385,10 @@ function buildShowOptions(createTool: ToolFactory): OcttoTool {
     description: `Show options with pros/cons for user to select.
 Response format: { selected: string, feedback?: string } where selected is the chosen option id.`,
     args: {
-      question: tool.schema.string().describe(QUESTION_DESCRIPTION),
+      question: z.string().describe(QUESTION_DESCRIPTION),
       options: prosConsOptionSchema.describe("Options with pros/cons"),
-      recommended: tool.schema.string().optional().describe("Recommended option id"),
-      allowFeedback: tool.schema.boolean().optional().describe("Allow text feedback with selection"),
+      recommended: z.string().optional().describe("Recommended option id"),
+      allowFeedback: z.boolean().optional().describe("Allow text feedback with selection"),
     },
     validate: (args) => {
       if (!args.options || args.options.length === 0) return OPTIONS_EMPTY_ERROR;
@@ -415,9 +415,9 @@ function buildReviewSection(createTool: ToolFactory): OcttoTool {
     type: "review_section",
     description: "Show content section for user review with inline feedback.",
     args: {
-      question: tool.schema.string().describe("Section title"),
-      content: tool.schema.string().describe("Section content (markdown)"),
-      context: tool.schema.string().optional().describe("Context about what to review"),
+      question: z.string().describe("Section title"),
+      content: z.string().describe("Section content (markdown)"),
+      context: z.string().optional().describe("Context about what to review"),
     },
     toConfig: (args) => ({
       question: args.question,
@@ -448,8 +448,8 @@ function buildThumbs(createTool: ToolFactory): OcttoTool {
     description: `Ask user for quick thumbs up/down feedback.
 Response format: { choice: "up" | "down" }`,
     args: {
-      question: tool.schema.string().describe(QUESTION_DESCRIPTION),
-      context: tool.schema.string().optional().describe("Context to show"),
+      question: z.string().describe(QUESTION_DESCRIPTION),
+      context: z.string().optional().describe("Context to show"),
     },
     toConfig: (args) => ({
       question: args.question,
@@ -470,9 +470,9 @@ function buildEmojiReact(createTool: ToolFactory): OcttoTool {
     type: "emoji_react",
     description: "Ask user to react with an emoji.",
     args: {
-      question: tool.schema.string().describe(QUESTION_DESCRIPTION),
-      context: tool.schema.string().optional().describe("Context to show"),
-      emojis: tool.schema.array(tool.schema.string()).optional().describe("Available emoji options"),
+      question: z.string().describe(QUESTION_DESCRIPTION),
+      context: z.string().optional().describe("Context to show"),
+      emojis: z.array(z.string()).optional().describe("Available emoji options"),
     },
     toConfig: (args) => ({
       question: args.question,
@@ -498,12 +498,12 @@ function buildSlider(createTool: ToolFactory): OcttoTool {
     description: `Ask user to select a value on a numeric slider.
 Response format: { value: number }`,
     args: {
-      question: tool.schema.string().describe(QUESTION_DESCRIPTION),
-      min: tool.schema.number().describe("Minimum value"),
-      max: tool.schema.number().describe("Maximum value"),
-      step: tool.schema.number().optional().describe("Step size (default: 1)"),
-      defaultValue: tool.schema.number().optional().describe("Default value"),
-      context: tool.schema.string().optional().describe(CONTEXT_DESCRIPTION),
+      question: z.string().describe(QUESTION_DESCRIPTION),
+      min: z.number().describe("Minimum value"),
+      max: z.number().describe("Maximum value"),
+      step: z.number().optional().describe("Step size (default: 1)"),
+      defaultValue: z.number().optional().describe("Default value"),
+      context: z.string().optional().describe(CONTEXT_DESCRIPTION),
     },
     validate: (args) => {
       if (args.min >= args.max) return `min (${args.min}) must be less than max (${args.max})`;

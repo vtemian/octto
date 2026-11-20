@@ -105,6 +105,18 @@ describe("createSessionStore", () => {
       expect(result.status).toBe("pending");
     });
 
+    it("withdraws an interrupted blocking wait for one question", async () => {
+      const { session_id } = await sessions.startSession({});
+      const { question_id } = sessions.pushQuestion(session_id, "confirm", { question: "Go?" });
+      const interrupted = new AbortController();
+
+      const orphan = sessions.getAnswer({ question_id, block: true, timeout: 1000, signal: interrupted.signal });
+      interrupted.abort();
+
+      expect(await orphan).toEqual({ completed: false, status: "aborted", reason: "aborted" });
+      expect((await sessions.getAnswer({ question_id, block: false })).status).toBe("pending");
+    });
+
     it("should return cancelled status for non-existent question", async () => {
       const result = await sessions.getAnswer({ question_id: "q_nonexistent", block: false });
 
@@ -167,6 +179,34 @@ describe("createSessionStore", () => {
       expect(result.completed).toBe(false);
       expect(result.status).toBe("timeout");
       expect(elapsed).toBeGreaterThanOrEqual(100);
+    });
+
+    it("withdraws an interrupted wait, so the next answer reaches the caller that retried", async () => {
+      const { session_id } = await sessions.startSession({});
+      const { question_id } = sessions.pushQuestion(session_id, "confirm", { question: "Go?" });
+      const interrupted = new AbortController();
+
+      const orphan = sessions.getNextAnswer({ session_id, block: true, timeout: 1000, signal: interrupted.signal });
+      interrupted.abort();
+      const retry = sessions.getNextAnswer({ session_id, block: true, timeout: 1000 });
+      sessions.handleWsMessage(session_id, { type: "response", id: question_id, answer: { choice: "yes" } });
+
+      expect(await orphan).toEqual({ completed: false, status: "aborted", reason: "aborted" });
+      expect((await retry).response).toEqual({ choice: "yes" });
+    });
+
+    it("returns aborted at once for a signal that has already fired", async () => {
+      const { session_id } = await sessions.startSession({});
+      sessions.pushQuestion(session_id, "confirm", { question: "Go?" });
+
+      const result = await sessions.getNextAnswer({
+        session_id,
+        block: true,
+        timeout: 1000,
+        signal: AbortSignal.abort(),
+      });
+
+      expect(result.status).toBe("aborted");
     });
   });
 

@@ -8,6 +8,7 @@
  */
 
 const DEFAULT_PORT = 8787;
+const PROBE_MARKER = "Evaluate the branch";
 const SSE_HEADERS = {
   "Content-Type": "text/event-stream",
   "Cache-Control": "no-cache",
@@ -62,6 +63,7 @@ function resolveArgs(args: Record<string, unknown>, messages: readonly ChatMessa
 
 interface ChatRequest {
   readonly model?: string;
+  readonly temperature?: number;
   readonly messages?: readonly ChatMessage[];
   readonly stream?: boolean;
 }
@@ -85,6 +87,18 @@ async function loadScript(path: string): Promise<readonly ScriptTurn[]> {
   const turns: unknown[] = parsed;
   if (!turns.every(isScriptTurn)) throw new Error(`Script ${path} turns must be {tool,args} or {text}`);
   return turns;
+}
+
+/**
+ * octto's probe agent runs on its own session, so turn counting cannot tell it
+ * apart from the main conversation. STUB_PROBE_REPLY, when set, answers any
+ * request that carries the probe prompt and leaves the script to the main agent.
+ */
+function probeReplyFor(request: ChatRequest): TextTurn | undefined {
+  const reply = process.env.STUB_PROBE_REPLY;
+  if (!reply) return undefined;
+  const mentionsProbe = JSON.stringify(request.messages ?? []).includes(PROBE_MARKER);
+  return mentionsProbe ? { text: reply } : undefined;
 }
 
 function assistantTurnsSoFar(request: ChatRequest): number {
@@ -154,7 +168,14 @@ function completionBody(model: string, turn: ScriptTurn, args: Record<string, un
 // Past the end of the script the model must stop, or opencode would loop forever.
 const EXHAUSTED: TextTurn = { text: "Script exhausted." };
 
+/** What each chat request carried, so specs can assert on generation settings that reached the wire. */
+interface SeenRequest {
+  readonly probe: boolean;
+  readonly temperature: number | null;
+}
+
 export function createStubProvider(scriptPath: string, port: number): ReturnType<typeof Bun.serve> {
+  const seen: SeenRequest[] = [];
   return Bun.serve({
     port,
     idleTimeout: 0,
@@ -162,6 +183,7 @@ export function createStubProvider(scriptPath: string, port: number): ReturnType
       const url = new URL(request.url);
 
       if (url.pathname === "/health") return new Response("ok");
+      if (url.pathname === "/seen") return Response.json(seen);
 
       if (url.pathname.endsWith("/models")) {
         return Response.json({ object: "list", data: [{ id: "stub-model", object: "model" }] });
@@ -174,9 +196,13 @@ export function createStubProvider(scriptPath: string, port: number): ReturnType
       const body: unknown = await request.json();
       if (!isChatRequest(body)) return new Response("bad request", { status: 400 });
 
+      seen.push({
+        probe: JSON.stringify(body.messages ?? []).includes(PROBE_MARKER),
+        temperature: body.temperature ?? null,
+      });
       const script = await loadScript(scriptPath);
       const index = assistantTurnsSoFar(body);
-      const turn = script[index] ?? EXHAUSTED;
+      const turn = probeReplyFor(body) ?? script[index] ?? EXHAUSTED;
       const model = body.model ?? "stub-model";
       const args = isToolTurn(turn) ? resolveArgs(turn.args, body.messages ?? []) : {};
 

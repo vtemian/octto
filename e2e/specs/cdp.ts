@@ -33,12 +33,30 @@ export async function listTargets(port: number): Promise<CdpTarget[]> {
   return isTargetList(parsed) ? parsed : [];
 }
 
-export async function waitForTarget(port: number, urlPrefix: string, timeoutMs: number): Promise<CdpTarget> {
+/** Ids of the tabs open right now, so a spec can ignore pages earlier specs left behind. */
+export async function targetIds(port: number): Promise<ReadonlySet<string>> {
+  return new Set((await listTargets(port)).map((t) => t.id));
+}
+
+/** Closes every tab under the prefix. Specs that drive octto without CDP still get tabs via xdg-open. */
+export async function closeTargets(port: number, urlPrefix: string): Promise<void> {
+  const stale = (await listTargets(port)).filter((t) => t.type === "page" && t.url.startsWith(urlPrefix));
+  await Promise.all(stale.map((t) => fetch(`http://127.0.0.1:${port}/json/close/${t.id}`).catch(() => undefined)));
+}
+
+export async function waitForTarget(
+  port: number,
+  urlPrefix: string,
+  timeoutMs: number,
+  ignore: ReadonlySet<string> = new Set(),
+): Promise<CdpTarget> {
   const deadline = Date.now() + timeoutMs;
 
   while (Date.now() < deadline) {
     const targets = await listTargets(port);
-    const page = targets.find((t) => t.type === "page" && t.url.startsWith(urlPrefix) && t.webSocketDebuggerUrl);
+    const page = targets.find(
+      (t) => t.type === "page" && t.url.startsWith(urlPrefix) && t.webSocketDebuggerUrl && !ignore.has(t.id),
+    );
     if (page) return page;
     await Bun.sleep(POLL_MS);
   }

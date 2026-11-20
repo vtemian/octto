@@ -24,7 +24,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { octtoPort, type StubHandle, startStub, waitUntil, writeOpencodeConfig } from "./harness";
+import { closeTargets } from "./cdp";
+import { cdpPort, octtoPort, type StubHandle, startStub, waitUntil, writeOpencodeConfig } from "./harness";
 
 const PLUGIN_PATH = "/work/dist/index.js";
 const SCRIPT = join(import.meta.dir, "..", "scripts", "issue-58-leak.json");
@@ -163,10 +164,12 @@ describe("issue #58: deleting a session tears its brainstorm server down", () =>
     console.log("[issue-58:leak] serve is ready");
   }, 200_000);
 
-  afterAll(() => {
+  afterAll(async () => {
     serve?.kill();
     stub?.stop();
     rmSync(home, { recursive: true, force: true });
+    // octto opened a tab per brainstorm via xdg-open; left open, they poison later specs.
+    await closeTargets(cdpPort(), `http://localhost:${octtoPort()}`);
   });
 
   it("stops the stale server after the opencode session is deleted", async () => {

@@ -5,7 +5,9 @@
  * octto server down instead of leaking it.
  */
 import { afterAll, describe, expect, it, mock } from "bun:test";
-import { rm } from "node:fs/promises";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import type { PluginInput } from "@opencode-ai/plugin";
 
@@ -15,12 +17,15 @@ mock.module("../src/session/browser", () => ({
   openBrowser: async () => {},
 }));
 
+// create_brainstorm persists branch state under <directory>/.octto.
+const directory = mkdtempSync(join(tmpdir(), "octto-tracking-test-"));
+
 function createMockContext(): PluginInput {
   return {
     client: {} as any,
     project: {} as any,
-    directory: "/test",
-    worktree: "/test",
+    directory,
+    worktree: directory,
     serverUrl: new URL("http://localhost:3000"),
     $: {} as any,
   };
@@ -32,14 +37,13 @@ function resultText(result: unknown): string {
 }
 
 describe("session tracking (issue #58)", () => {
-  afterAll(async () => {
-    // create_brainstorm persists branch state under .octto/
-    await rm(".octto", { recursive: true, force: true });
+  afterAll(() => {
+    rmSync(directory, { recursive: true, force: true });
   });
 
   it("should end the brainstorm browser session when the opencode session is deleted", async () => {
     const { default: plugin } = await import("../src");
-    const result = await plugin(createMockContext());
+    const result = await plugin.server(createMockContext());
 
     const executeOutput = await result.tool!.create_brainstorm.execute(
       {

@@ -211,12 +211,27 @@ function resolveExistingAnswer(state: StoreState, questionId: string): GetAnswer
   return undefined;
 }
 
+/**
+ * Runs `stop` once when the signal aborts, at once if it already has. The
+ * returned detach is for the paths that settle normally.
+ */
+function onAbort(signal: AbortSignal | undefined, stop: () => void): () => void {
+  if (!signal) return () => {};
+  if (signal.aborted) {
+    stop();
+    return () => {};
+  }
+  signal.addEventListener("abort", stop, { once: true });
+  return () => signal.removeEventListener("abort", stop);
+}
+
 function waitForAnswer(state: StoreState, input: GetAnswerInput, question: Question): Promise<GetAnswerOutput> {
   const timeout = input.timeout ?? DEFAULT_ANSWER_TIMEOUT_MS;
 
   return new Promise<GetAnswerOutput>((resolve) => {
     const cleanup = state.responseWaiters.register(input.question_id, (response) => {
       clearTimeout(timeoutId);
+      detach();
       if (response && typeof response === "object" && "cancelled" in response) {
         resolve({ completed: false, status: STATUSES.CANCELLED, reason: STATUSES.CANCELLED });
       } else {
@@ -226,9 +241,17 @@ function waitForAnswer(state: StoreState, input: GetAnswerInput, question: Quest
 
     const timeoutId = setTimeout(() => {
       cleanup();
+      detach();
       question.status = STATUSES.TIMEOUT;
       resolve({ completed: false, status: STATUSES.TIMEOUT, reason: STATUSES.TIMEOUT });
     }, timeout);
+
+    // An interrupted call must not stay first in line and take a later answer.
+    const detach = onAbort(input.signal, () => {
+      cleanup();
+      clearTimeout(timeoutId);
+      resolve({ completed: false, status: STATUSES.ABORTED, reason: STATUSES.ABORTED });
+    });
   });
 }
 
@@ -275,6 +298,7 @@ function waitForNextAnswer(
   return new Promise<GetNextAnswerOutput>((resolve) => {
     const cleanup = state.sessionWaiters.register(input.session_id, ({ questionId, response }) => {
       clearTimeout(timeoutId);
+      detach();
       const question = session.questions.get(questionId);
       if (question) question.retrieved = true;
       resolve({
@@ -288,8 +312,16 @@ function waitForNextAnswer(
 
     const timeoutId = setTimeout(() => {
       cleanup();
+      detach();
       resolve({ completed: false, status: STATUSES.TIMEOUT, reason: STATUSES.TIMEOUT });
     }, timeout);
+
+    // An interrupted call must not stay first in line and take a later answer.
+    const detach = onAbort(input.signal, () => {
+      cleanup();
+      clearTimeout(timeoutId);
+      resolve({ completed: false, status: STATUSES.ABORTED, reason: STATUSES.ABORTED });
+    });
   });
 }
 

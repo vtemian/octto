@@ -1,4 +1,4 @@
-import { tool } from "@opencode-ai/plugin/tool";
+import { z } from "zod";
 
 import { DEFAULT_ANSWER_TIMEOUT_MS } from "@/constants";
 import type { Answer, SessionStore } from "@/session";
@@ -6,23 +6,25 @@ import { QUESTION_TYPES, QUESTIONS, STATUSES } from "@/session";
 import { BRANCH_STATUSES, type BrainstormState, createStateStore, type StateStore } from "@/state";
 import { generateSessionId } from "@/utils";
 
+import { defineTool } from "./define";
 import { formatBranchStatus, formatFindings, formatFindingsList, formatQASummary } from "./formatters";
+import type { ProbeRunner } from "./probe";
 import { processAnswer } from "./processor";
-import type { OcttoTool, OcttoTools, OpencodeClient } from "./types";
+import type { OcttoTool, OcttoTools } from "./types";
 
 const MAX_ITERATIONS = 50;
 const REVIEW_TIMEOUT_MS = 600_000;
 
-const branchesSchema = tool.schema
+const branchesSchema = z
   .array(
-    tool.schema.object({
-      id: tool.schema.string(),
-      scope: tool.schema.string(),
-      initial_question: tool.schema.object({
-        type: tool.schema.enum(QUESTION_TYPES),
-        config: tool.schema.looseObject({
-          question: tool.schema.string().optional(),
-          context: tool.schema.string().optional(),
+    z.object({
+      id: z.string(),
+      scope: z.string(),
+      initial_question: z.object({
+        type: z.enum(QUESTION_TYPES),
+        config: z.looseObject({
+          question: z.string().optional(),
+          context: z.string().optional(),
         }),
       }),
     }),
@@ -35,9 +37,16 @@ const COLLECTION_STOPS = {
   NO_ANSWER_WITHIN_TIMEOUT: "no_answer_within_timeout",
   ITERATION_CAP: "iteration_cap",
   STALLED: "stalled",
+  ABORTED: "aborted",
 } as const;
 
+const ABORTED_RESULT =
+  "<brainstorm_interrupted>The call was interrupted; call await_brainstorm_complete again to resume.</brainstorm_interrupted>";
+
 type CollectionStop = (typeof COLLECTION_STOPS)[keyof typeof COLLECTION_STOPS];
+
+const CONTINUE = "continue";
+type CollectionStep = CollectionStop | typeof CONTINUE;
 
 interface CollectionResult {
   state: BrainstormState | null;
@@ -52,7 +61,7 @@ function enqueueAnswerProcessing(
   browserSessionId: string,
   questionId: string,
   response: Answer,
-  client: OpencodeClient,
+  probe: ProbeRunner,
   pendingProcessing: Promise<void>[],
 ): void {
   const processing = processAnswer(
@@ -62,7 +71,7 @@ function enqueueAnswerProcessing(
     browserSessionId,
     questionId,
     response,
-    client,
+    probe,
   ).catch((error: unknown) => {
     console.error(`[octto] Error processing answer ${questionId}:`, error);
   });
@@ -94,17 +103,9 @@ async function processOneAnswer(
   sessions: SessionStore,
   sessionId: string,
   browserSessionId: string,
-  client: OpencodeClient,
-): Promise<"continue" | "break" | "stalled"> {
-  if (!answer.completed) {
-    if (answer.status === STATUSES.NONE_PENDING) {
-      // flushPending empties the array, so read it first.
-      const mayStillPushQuestions = pending.length > 0;
-      await flushPending(pending);
-      return mayStillPushQuestions ? "continue" : "stalled";
-    }
-    return answer.status === STATUSES.TIMEOUT ? "break" : "continue";
-  }
+  probe: ProbeRunner,
+): Promise<CollectionStep> {
+  if (!answer.completed) return stepWithoutAnswer(answer, pending);
 
   if (isCompletedWithAnswer(answer)) {
     enqueueAnswerProcessing(
@@ -114,11 +115,21 @@ async function processOneAnswer(
       browserSessionId,
       answer.question_id,
       answer.response,
-      client,
+      probe,
       pending,
     );
   }
-  return "continue";
+  return CONTINUE;
+}
+
+async function stepWithoutAnswer(answer: PendingAnswer, pending: Promise<void>[]): Promise<CollectionStep> {
+  if (answer.status === STATUSES.ABORTED) return COLLECTION_STOPS.ABORTED;
+  if (answer.status === STATUSES.TIMEOUT) return COLLECTION_STOPS.NO_ANSWER_WITHIN_TIMEOUT;
+  if (answer.status !== STATUSES.NONE_PENDING) return CONTINUE;
+  // flushPending empties the array, so read it first.
+  const mayStillPushQuestions = pending.length > 0;
+  await flushPending(pending);
+  return mayStillPushQuestions ? CONTINUE : COLLECTION_STOPS.STALLED;
 }
 
 async function collectAnswers(
@@ -126,7 +137,8 @@ async function collectAnswers(
   sessions: SessionStore,
   sessionId: string,
   browserSessionId: string,
-  client: OpencodeClient,
+  probe: ProbeRunner,
+  signal: AbortSignal | undefined,
 ): Promise<CollectionResult> {
   const pending: Promise<void>[] = [];
   let stoppedBecause: CollectionStop = COLLECTION_STOPS.ITERATION_CAP;
@@ -141,15 +153,12 @@ async function collectAnswers(
       session_id: browserSessionId,
       block: true,
       timeout: DEFAULT_ANSWER_TIMEOUT_MS,
+      signal,
     });
 
-    const action = await processOneAnswer(answer, pending, stateStore, sessions, sessionId, browserSessionId, client);
-    if (action === "break") {
-      stoppedBecause = COLLECTION_STOPS.NO_ANSWER_WITHIN_TIMEOUT;
-      break;
-    }
-    if (action === "stalled") {
-      stoppedBecause = COLLECTION_STOPS.STALLED;
+    const step = await processOneAnswer(answer, pending, stateStore, sessions, sessionId, browserSessionId, probe);
+    if (step !== CONTINUE) {
+      stoppedBecause = step;
       break;
     }
   }
@@ -198,11 +207,16 @@ function isReviewResponse(value: unknown): value is { decision: string; feedback
   return typeof value === "object" && value !== null && "decision" in value;
 }
 
-async function waitForReviewApproval(sessions: SessionStore, browserSessionId: string): Promise<ReviewResult> {
+async function waitForReviewApproval(
+  sessions: SessionStore,
+  browserSessionId: string,
+  signal: AbortSignal | undefined,
+): Promise<ReviewResult> {
   const reviewAnswer = await sessions.getNextAnswer({
     session_id: browserSessionId,
     block: true,
     timeout: REVIEW_TIMEOUT_MS,
+    signal,
   });
 
   if (!reviewAnswer.completed || !isReviewResponse(reviewAnswer.response)) {
@@ -281,6 +295,7 @@ async function registerBranchQuestions(
   sessions: SessionStore,
   sessionId: string,
   branches: BranchInput[],
+  trackBrowserSession: ((sessionId: string) => Promise<void>) | undefined,
 ): Promise<{ session_id: string; url: string }> {
   const initialQuestions = branches.map((b) => {
     const { type, config } = b.initial_question;
@@ -292,6 +307,7 @@ async function registerBranchQuestions(
     title: "Brainstorming Session",
     questions: initialQuestions,
   });
+  await trackBrowserSession?.(browserSession.session_id);
 
   await store.setBrowserSessionId(sessionId, browserSession.session_id);
 
@@ -311,20 +327,26 @@ async function registerBranchQuestions(
 }
 
 function buildCreateBrainstormTool(store: StateStore, sessions: SessionStore): OcttoTool {
-  return tool({
+  return defineTool({
     description: "Create a new brainstorm session with exploration branches",
     args: {
-      request: tool.schema.string().describe("The original user request"),
+      request: z.string().describe("The original user request"),
       branches: branchesSchema,
     },
-    execute: async (args) => {
+    execute: async (args, call) => {
       const sessionId = generateSessionId();
       await store.createSession(
         sessionId,
         args.request,
         args.branches.map((b) => ({ id: b.id, scope: b.scope })),
       );
-      const browserSession = await registerBranchQuestions(store, sessions, sessionId, args.branches);
+      const browserSession = await registerBranchQuestions(
+        store,
+        sessions,
+        sessionId,
+        args.branches,
+        call.trackBrowserSession,
+      );
 
       const branchesXml = args.branches.map((b) => `    <branch id="${b.id}">${b.scope}</branch>`).join("\n");
       return `<brainstorm_created>
@@ -341,10 +363,10 @@ ${branchesXml}
 }
 
 function buildGetSessionSummaryTool(store: StateStore): OcttoTool {
-  return tool({
+  return defineTool({
     description: "Get summary of all branches and their findings",
     args: {
-      session_id: tool.schema.string().describe("Brainstorm session ID"),
+      session_id: z.string().describe("Brainstorm session ID"),
     },
     execute: async (args) => {
       const state = await store.getSession(args.session_id);
@@ -365,10 +387,10 @@ ${branches}
 }
 
 function buildEndBrainstormTool(store: StateStore, sessions: SessionStore): OcttoTool {
-  return tool({
+  return defineTool({
     description: "End a brainstorm session and get final summary",
     args: {
-      session_id: tool.schema.string().describe("Brainstorm session ID"),
+      session_id: z.string().describe("Brainstorm session ID"),
     },
     execute: async (args) => {
       const state = await store.getSession(args.session_id);
@@ -390,56 +412,62 @@ function buildEndBrainstormTool(store: StateStore, sessions: SessionStore): Octt
   });
 }
 
-function buildAwaitBrainstormCompleteTool(
-  store: StateStore,
-  sessions: SessionStore,
-  client: OpencodeClient,
-): OcttoTool {
-  return tool({
+function buildAwaitBrainstormCompleteTool(store: StateStore, sessions: SessionStore, probe: ProbeRunner): OcttoTool {
+  return defineTool({
     description: `Wait for brainstorm session to complete. Processes answers asynchronously as they arrive.
 Returns when all branches are done with their findings.
 This is the recommended way to run a brainstorm - just create_brainstorm then await_brainstorm_complete.`,
     args: {
-      session_id: tool.schema.string().describe("Brainstorm session ID (state session)"),
-      browser_session_id: tool.schema.string().describe("Browser session ID (for collecting answers)"),
+      session_id: z.string().describe("Brainstorm session ID (state session)"),
+      browser_session_id: z.string().describe("Browser session ID (for collecting answers)"),
     },
-    execute: async (args) => {
+    execute: async (args, call) => {
       const { state, allComplete, stoppedBecause } = await collectAnswers(
         store,
         sessions,
         args.session_id,
         args.browser_session_id,
-        client,
+        probe,
+        call.signal,
       );
 
       if (!state) return "<error>Session lost</error>";
+      // The host has dropped this call; pushing the plan review now would leave
+      // it waiting for an approval nobody collects.
+      if (stoppedBecause === COLLECTION_STOPS.ABORTED) return ABORTED_RESULT;
       if (!allComplete) return formatInProgressResult(state, stoppedBecause);
 
       const sections = buildReviewSections(state);
 
+      let reviewId: string;
       try {
-        sessions.pushQuestion(args.browser_session_id, QUESTIONS.SHOW_PLAN, {
+        reviewId = sessions.pushQuestion(args.browser_session_id, QUESTIONS.SHOW_PLAN, {
           question: "Review Design Plan",
           sections,
-        });
+        }).question_id;
       } catch (_error: unknown) {
         // Expected when the browser session has already ended
         return formatSkippedReviewResult(state);
       }
 
-      const { approved, feedback } = await waitForReviewApproval(sessions, args.browser_session_id);
+      const { approved, feedback } = await waitForReviewApproval(sessions, args.browser_session_id, call.signal);
+      if (call.signal?.aborted) {
+        // The retry pushes its own review; this one would linger unanswered.
+        sessions.cancelQuestion(reviewId);
+        return ABORTED_RESULT;
+      }
       return formatCompletionResult(state, approved, feedback);
     },
   });
 }
 
-export function createBrainstormTools(sessions: SessionStore, client: OpencodeClient, baseDir?: string): OcttoTools {
+export function createBrainstormTools(sessions: SessionStore, probe: ProbeRunner, baseDir?: string): OcttoTools {
   const store = createStateStore(baseDir);
 
   return {
     create_brainstorm: buildCreateBrainstormTool(store, sessions),
     get_session_summary: buildGetSessionSummaryTool(store),
     end_brainstorm: buildEndBrainstormTool(store, sessions),
-    await_brainstorm_complete: buildAwaitBrainstormCompleteTool(store, sessions, client),
+    await_brainstorm_complete: buildAwaitBrainstormCompleteTool(store, sessions, probe),
   };
 }

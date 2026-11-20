@@ -5,7 +5,7 @@ import { QUESTION_TYPES_XML } from "./prompts";
 export const agent: AgentConfig = {
   description: "Analyzes a request and creates exploration branches with scopes",
   mode: "subagent",
-  model: "openai/gpt-5.2-codex",
+  model: "openai/gpt-5.3-codex",
   temperature: 0.5,
   prompt: `<purpose>
 Analyze the user's request and create 2-4 exploration branches.

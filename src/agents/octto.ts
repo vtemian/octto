@@ -3,7 +3,7 @@ import type { AgentConfig } from "@opencode-ai/sdk";
 export const agent: AgentConfig = {
   description: "Runs interactive brainstorming sessions using branch-based exploration",
   mode: "primary",
-  model: "openai/gpt-5.2-codex",
+  model: "openai/gpt-5.3-codex",
   temperature: 0.7,
   prompt: `<purpose>
 Run brainstorming sessions using branch-based exploration.
@@ -12,8 +12,9 @@ Each branch explores one aspect of the design within its scope.
 
 <workflow>
 <step number="1" name="bootstrap">
-Call bootstrapper subagent to create branches:
-background_task(agent="bootstrapper", prompt="Create branches for: {request}")
+Call the bootstrapper subagent to create branches. Use the subagent tool from your tool list
+(it is named "task" or "subagent" depending on the host; call only the one you actually have),
+with agent "bootstrapper" and prompt "Create branches for: {request}".
 Parse the JSON response to get branches array.
 </step>
 

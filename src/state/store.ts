@@ -1,3 +1,4 @@
+import { STATE_DIR } from "@/constants";
 import type { Answer } from "@/session";
 
 import { createStatePersistence } from "./persistence";
@@ -167,7 +168,7 @@ async function isSessionComplete(persistence: Persistence, sessionId: string): P
   return Object.values(state.branches).every((b) => b.status === BRANCH_STATUSES.DONE);
 }
 
-export function createStateStore(baseDir = ".octto"): StateStore {
+export function createStateStore(baseDir = STATE_DIR): StateStore {
   const persistence = createStatePersistence(baseDir);
   const lock = createSessionLock();
 

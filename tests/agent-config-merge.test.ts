@@ -21,7 +21,7 @@ interface AgentShape {
 
 async function applyConfig(agent: Record<string, AgentShape>): Promise<Record<string, AgentShape>> {
   const { default: plugin } = await import("../src");
-  const hooks = await plugin(createMockContext());
+  const hooks = await plugin.server(createMockContext());
   const config = { agent };
   await hooks.config?.(config as never);
   return config.agent;
@@ -60,7 +60,7 @@ describe("agent config merge", () => {
     const marker = "<user-instructions>";
 
     const countIn = async (): Promise<number> => {
-      const hooks = await plugin(createMockContext());
+      const hooks = await plugin.server(createMockContext());
       const config: { agent: Record<string, { prompt?: string }> } = { agent: {} };
       await hooks.config?.(config as never);
       return config.agent.octto?.prompt?.split(marker).length ?? 0;

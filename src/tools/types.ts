@@ -1,10 +1,11 @@
 import type { z } from "zod";
 
-/** The subset of the host tool context octto reads. Both hosts expose these. */
+/** Host context normalized by the adapters, plus octto's own session tracking callback. */
 export interface ToolCall {
   readonly sessionID?: string;
   /** Fires when the user interrupts the call, so a blocking wait can stop taking answers. */
   readonly signal?: AbortSignal;
+  readonly trackBrowserSession?: (sessionId: string) => Promise<void>;
 }
 
 /**

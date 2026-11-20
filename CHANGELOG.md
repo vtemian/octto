@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.5.0] - 2026-10-17
+## [0.5.0] - 2026-11-20
 
 ### Added
 - OpenCode 2 support. The package default-exports `{ id, setup, server }`: OpenCode 2 loads it through `setup()`, OpenCode 1 (1.18.29 or newer) through `server()`.
@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Under OpenCode 1, the probe runs with every tool denied (`tools: {"*": false}`). The empty map it sent added no rules, so a probe tool call could hit a permission prompt in a session nobody sees and hang `await_brainstorm_complete`.
 - Brainstorm state is written to `<project>/.octto` instead of `.octto` under the host's working directory, which under OpenCode 2's background service is `$HOME`.
 - Brainstorm state is saved atomically (staging file, then rename). A concurrent read could catch the file truncated mid-write, fail to parse, and drop that answer's probe, which stalled the brainstorm.
+- Brainstorm snapshots and temporary save files are readable only by their owner.
+- Host session deletion closes only the browser sessions that conversation opened, including a browser session still being created when the host session was deleted.
 - An interrupted `await_brainstorm_complete`, `get_next_answer` or `get_answer` withdraws its wait. Before, the orphaned call stayed first in line and took the next answer from the retry; an interrupted plan review is now cancelled too, so the retry's review is the only one open.
 - Under OpenCode 1, a probe turn that errored (HTTP 200 with the error on `info`) closes its branch with the provider's message instead of "Could not parse probe response".
 - Under OpenCode 2, a temperature set in `octto.json` is sent through the session context hook; v2 never read the agent request body octto wrote it to. Built-in temperatures are not sent on v2, since the hook skips the host's capability check and reasoning models reject the parameter.

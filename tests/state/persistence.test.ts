@@ -1,6 +1,6 @@
 // tests/state/persistence.test.ts
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -23,6 +23,25 @@ describe("createStatePersistence", () => {
   });
 
   describe("save and load", () => {
+    it("creates and replaces state files without granting group or public access", async () => {
+      const state: BrainstormState = {
+        session_id: "ses_private",
+        browser_session_id: null,
+        request: "Private brainstorm",
+        created_at: Date.now(),
+        updated_at: Date.now(),
+        branches: {},
+        branch_order: [],
+      };
+      const filePath = join(testDir, "ses_private.json");
+      const groupAndPublicBits = 0o077;
+
+      await persistence.save(state);
+      expect(statSync(filePath).mode & groupAndPublicBits).toBe(0);
+      await persistence.save(state);
+      expect(statSync(filePath).mode & groupAndPublicBits).toBe(0);
+    });
+
     it("never lets a concurrent load see a half-written file", async () => {
       const state: BrainstormState = {
         session_id: "ses_race",

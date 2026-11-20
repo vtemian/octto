@@ -114,13 +114,14 @@ REQUIRED: You MUST provide at least 1 question. Will fail without questions.`,
       title: z.string().optional().describe("Session title (shown in browser)"),
       questions: questionsSchema,
     },
-    execute: async (args) => {
+    execute: async (args, call) => {
       if (!args.questions || args.questions.length === 0) {
         return MISSING_QUESTIONS_ERROR;
       }
 
       try {
         const session = await sessions.startSession({ title: args.title, questions: args.questions });
+        await call.trackBrowserSession?.(session.session_id);
         return formatSessionStarted(session);
       } catch (error: unknown) {
         return `Failed to start session: ${error instanceof Error ? error.message : String(error)}`;

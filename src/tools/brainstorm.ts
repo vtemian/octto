@@ -295,6 +295,7 @@ async function registerBranchQuestions(
   sessions: SessionStore,
   sessionId: string,
   branches: BranchInput[],
+  trackBrowserSession: ((sessionId: string) => Promise<void>) | undefined,
 ): Promise<{ session_id: string; url: string }> {
   const initialQuestions = branches.map((b) => {
     const { type, config } = b.initial_question;
@@ -306,6 +307,7 @@ async function registerBranchQuestions(
     title: "Brainstorming Session",
     questions: initialQuestions,
   });
+  await trackBrowserSession?.(browserSession.session_id);
 
   await store.setBrowserSessionId(sessionId, browserSession.session_id);
 
@@ -331,14 +333,20 @@ function buildCreateBrainstormTool(store: StateStore, sessions: SessionStore): O
       request: z.string().describe("The original user request"),
       branches: branchesSchema,
     },
-    execute: async (args) => {
+    execute: async (args, call) => {
       const sessionId = generateSessionId();
       await store.createSession(
         sessionId,
         args.request,
         args.branches.map((b) => ({ id: b.id, scope: b.scope })),
       );
-      const browserSession = await registerBranchQuestions(store, sessions, sessionId, args.branches);
+      const browserSession = await registerBranchQuestions(
+        store,
+        sessions,
+        sessionId,
+        args.branches,
+        call.trackBrowserSession,
+      );
 
       const branchesXml = args.branches.map((b) => `    <branch id="${b.id}">${b.scope}</branch>`).join("\n");
       return `<brainstorm_created>
